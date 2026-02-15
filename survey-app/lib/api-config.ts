@@ -18,6 +18,8 @@ export interface GasStatsResponse {
                 happiness: string;
                 fun: string;
                 satisfaction: string;
+                energy: string;
+                difficulty: string;
             };
         };
     };

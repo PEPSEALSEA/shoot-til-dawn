@@ -677,7 +677,7 @@ function getStatistics() {
         const postData = postSheet.getDataRange().getValues();
 
         if (postData.length > 1) {
-            let stressSum = 0, happinessSum = 0, funSum = 0, satisfactionSum = 0;
+            let stressSum = 0, happinessSum = 0, funSum = 0, satisfactionSum = 0, energySum = 0, difficultySum = 0;
             let count = 0;
 
             for (let i = 1; i < postData.length; i++) {
@@ -685,6 +685,8 @@ function getStatistics() {
                 if (postData[i][5]) happinessSum += Number(postData[i][5]);
                 if (postData[i][6]) funSum += Number(postData[i][6]);
                 if (postData[i][7]) satisfactionSum += Number(postData[i][7]);
+                if (postData[i][8]) energySum += Number(postData[i][8]);
+                if (postData[i][9]) difficultySum += Number(postData[i][9]);
                 count++;
             }
 
@@ -692,7 +694,9 @@ function getStatistics() {
                 stress: (stressSum / count).toFixed(2),
                 happiness: (happinessSum / count).toFixed(2),
                 fun: (funSum / count).toFixed(2),
-                satisfaction: (satisfactionSum / count).toFixed(2)
+                satisfaction: (satisfactionSum / count).toFixed(2),
+                energy: (energySum / count).toFixed(2),
+                difficulty: (difficultySum / count).toFixed(2)
             };
 
             stats.completedSurveys = count;
