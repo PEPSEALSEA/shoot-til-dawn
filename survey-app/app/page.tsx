@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, ClipboardList, Gamepad2, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Gamepad2, ArrowRight, Trophy } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -25,7 +25,7 @@ export default function Home() {
           Capture emotional data and visualize player journeys in real-time.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-6xl">
           <Link href="/survey" className="group">
             <div className="h-full p-8 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl transition-all hover:bg-white/10 hover:border-indigo-500/50 hover:scale-[1.02] text-left relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
@@ -35,9 +35,25 @@ export default function Home() {
                 <ClipboardList className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-2xl font-bold mb-3">Player Survey</h3>
-              <p className="text-slate-400 mb-6">Access the pre-game and post-game feedback forms used by players in-game.</p>
+              <p className="text-slate-400 mb-6">Access the pre-game and post-game feedback forms used by players.</p>
               <div className="flex items-center gap-2 text-indigo-400 font-bold group-hover:gap-4 transition-all uppercase tracking-widest text-sm">
                 Open Portal <ArrowRight className="w-4 h-4" />
+              </div>
+            </div>
+          </Link>
+
+          <Link href="/leaderboard" className="group">
+            <div className="h-full p-8 rounded-3xl bg-white/10 border border-white/20 backdrop-blur-3xl transition-all hover:bg-white/20 hover:border-yellow-500/50 hover:scale-[1.05] text-left relative overflow-hidden shadow-2xl shadow-yellow-500/10">
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <Trophy className="w-32 h-32" />
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-yellow-500 flex items-center justify-center mb-6">
+                <Trophy className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold mb-3">Leaderboard</h3>
+              <p className="text-slate-400 mb-6">Check out the top scores and see where you rank among the survivors.</p>
+              <div className="flex items-center gap-2 text-yellow-500 font-bold group-hover:gap-4 transition-all uppercase tracking-widest text-sm">
+                View Rankings <ArrowRight className="w-4 h-4" />
               </div>
             </div>
           </Link>
@@ -51,7 +67,7 @@ export default function Home() {
                 <LayoutDashboard className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-2xl font-bold mb-3">Admin Insight</h3>
-              <p className="text-slate-400 mb-6">View comprehensive analytics, player emotional trends, and feedback summaries.</p>
+              <p className="text-slate-400 mb-6">View comprehensive analytics, emotional trends, and feedback summaries.</p>
               <div className="flex items-center gap-2 text-purple-400 font-bold group-hover:gap-4 transition-all uppercase tracking-widest text-sm">
                 Launch Dashboard <ArrowRight className="w-4 h-4" />
               </div>

@@ -9,6 +9,8 @@ function SurveyForm() {
     const searchParams = useSearchParams();
     const [playerId, setPlayerId] = useState(searchParams.get('playerId') || '');
     const [playerName, setPlayerName] = useState(searchParams.get('name') || '');
+    const [score, setScore] = useState(searchParams.get('score') || '');
+    const [level, setLevel] = useState(searchParams.get('level') || '');
     const [type, setType] = useState<'pre' | 'post'>((searchParams.get('type') as 'pre' | 'post') || 'pre');
     const [submitted, setSubmitted] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -37,6 +39,8 @@ function SurveyForm() {
                 body: JSON.stringify({
                     playerId,
                     playerName,
+                    score: parseInt(score),
+                    level,
                     ...formData
                 })
             });
@@ -77,6 +81,20 @@ function SurveyForm() {
                 <p className="text-indigo-100 font-medium opacity-90">
                     Hi <strong>{playerName || 'Player'}</strong>, let us know how you feel!
                 </p>
+                {(score || level) && (
+                    <div className="flex items-center justify-center gap-4 mt-4">
+                        {score && (
+                            <div className="bg-white/20 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest border border-white/10">
+                                Score: {score}
+                            </div>
+                        )}
+                        {level && (
+                            <div className="bg-white/20 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest border border-white/10">
+                                Level: {level}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="p-8">

@@ -23,3 +23,16 @@ export interface GasStatsResponse {
     };
     generatedAt: string;
 }
+
+export interface LeaderboardEntry {
+    playerId: string;
+    name: string;
+    score: number;
+    level: string;
+    date: string;
+}
+
+export interface GasLeaderboardResponse {
+    success: boolean;
+    leaderboard: LeaderboardEntry[];
+}
