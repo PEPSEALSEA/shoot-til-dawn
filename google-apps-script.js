@@ -212,6 +212,50 @@ function registerPlayer(data) {
 }
 
 /**
+ * บันทึกหรืออัปเดตข้อมูลพื้นฐานผู้เล่น
+ */
+function upsertPlayer(playerId, name, age, gender) {
+    if (!playerId) return;
+    try {
+        const sheet = getOrCreateSheet(SHEET_NAMES.PLAYERS);
+        const data = sheet.getDataRange().getValues();
+        const timestamp = new Date();
+
+        // ค้นหาผู้เล่นเดิม
+        for (let i = 1; i < data.length; i++) {
+            if (data[i][0] === playerId) {
+                // อัปเดตข้อมูลถ้ายังไม่มี
+                if (name && (!data[i][1] || data[i][1] === 'Anonymous')) {
+                    sheet.getRange(i + 1, 2).setValue(name);
+                }
+                if (age && !data[i][2]) {
+                    sheet.getRange(i + 1, 3).setValue(age);
+                }
+                if (gender && (!data[i][3] || data[i][3] === 'ไม่ระบุ')) {
+                    sheet.getRange(i + 1, 4).setValue(gender);
+                }
+                // อัปเดต LastActive
+                sheet.getRange(i + 1, 10).setValue(timestamp);
+                return;
+            }
+        }
+
+        // ถ้าไม่พบ ให้สร้างใหม่
+        sheet.appendRow([
+            playerId,
+            name || 'Anonymous',
+            age || '',
+            gender || 'ไม่ระบุ',
+            '', '', '', '', // ข้อมูลอื่นๆ
+            timestamp, // RegisteredAt
+            timestamp  // LastActive
+        ]);
+    } catch (e) {
+        Logger.log('Upsert player failed: ' + e.toString());
+    }
+}
+
+/**
  * ดึงข้อมูลผู้เล่น
  */
 function getPlayerData(playerId) {
@@ -302,6 +346,9 @@ function getAllPlayers() {
  */
 function submitPreSurvey(data) {
     try {
+        // อัปเดตข้อมูลผู้เล่นก่อน
+        upsertPlayer(data.playerId, data.playerName, data.age, data.gender);
+
         const sheet = getOrCreateSheet(SHEET_NAMES.PRE_SURVEY, [
             'SurveyId', 'PlayerId', 'SessionId', 'Timestamp',
             'StressLevel', 'HappinessLevel', 'EnergyLevel',
@@ -357,6 +404,9 @@ function submitPreSurvey(data) {
  */
 function submitPostSurvey(data) {
     try {
+        // อัปเดตข้อมูลผู้เล่นก่อน
+        upsertPlayer(data.playerId, data.playerName, data.age, data.gender);
+
         const sheet = getOrCreateSheet(SHEET_NAMES.POST_SURVEY, [
             'SurveyId', 'PlayerId', 'SessionId', 'Timestamp',
             'StressLevel', 'HappinessLevel', 'FunLevel',
@@ -923,6 +973,9 @@ function getPlayerNamesMap() {
  */
 function submitScore(data) {
     try {
+        // อัปเดตข้อมูลผู้เล่น
+        upsertPlayer(data.playerId, data.playerName, data.age, data.gender);
+
         const sheet = getOrCreateSheet(SHEET_NAMES.SESSIONS);
         const sessionId = data.sessionId || generateSessionId();
         const timestamp = new Date();

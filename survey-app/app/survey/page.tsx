@@ -15,13 +15,15 @@ function SurveyForm() {
     const [submitted, setSubmitted] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<any>({
         stressLevel: 5,
         happinessLevel: 5,
         energyLevel: 5,
         funLevel: 5,
         satisfactionLevel: 5,
         difficultyRating: 5,
+        age: '',
+        gender: '',
         comments: ''
     });
 
@@ -94,7 +96,7 @@ function SurveyForm() {
 
             <div className="p-8">
                 <form onSubmit={handleSubmit} className="space-y-8">
-                    {!playerName && (
+                    {type === 'pre' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-100">
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">ชื่อผู้เล่น</label>
@@ -103,8 +105,34 @@ function SurveyForm() {
                                     value={playerName}
                                     onChange={(e) => setPlayerName(e.target.value)}
                                     placeholder="ใส่ชื่อของคุณ"
+                                    required={!playerName}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">อายุ</label>
+                                <input
+                                    type="number"
+                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
+                                    value={formData.age || ''}
+                                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                                    placeholder="ปี"
                                     required
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">เพศ</label>
+                                <select
+                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all bg-white"
+                                    value={formData.gender}
+                                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                                    required
+                                >
+                                    <option value="">เลือกเพศ</option>
+                                    <option value="ชาย">ชาย</option>
+                                    <option value="หญิง">หญิง</option>
+                                    <option value="อื่นๆ">อื่นๆ</option>
+                                    <option value="ไม่ระบุ">ไม่ระบุ</option>
+                                </select>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">รหัสผู้เล่น</label>
