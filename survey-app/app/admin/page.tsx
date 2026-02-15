@@ -343,6 +343,41 @@ export default function AdminDashboard() {
                         </div>
                     </ChartContainer>
 
+                    {/* Recent 20 Players Comparison Chart */}
+                    <ChartContainer title="เปรียบเทียบคะแนน 20 ผู้เล่นล่าสุด" subtitle="เปรียบเทียบผลงานผู้เล่นรายบุคคล 20 session ล่าสุด" className="lg:col-span-12">
+                        <div className="h-[400px] w-full mt-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={stats.recentPlayers} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis
+                                        dataKey="name"
+                                        angle={-45}
+                                        textAnchor="end"
+                                        interval={0}
+                                        height={100}
+                                        stroke="#94a3b8"
+                                        fontSize={11}
+                                        fontWeight={700}
+                                        tickLine={false}
+                                        axisLine={false}
+                                    />
+                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                                    <Tooltip
+                                        cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Bar
+                                        dataKey="score"
+                                        name="คะแนน"
+                                        fill="#6366f1"
+                                        radius={[6, 6, 0, 0]}
+                                        label={{ position: 'top', fontSize: 10, fontWeight: 'bold', fill: '#6366f1' }}
+                                    />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </ChartContainer>
+
                 </div>
             </main>
         </div>

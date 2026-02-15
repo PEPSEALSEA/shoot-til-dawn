@@ -853,6 +853,23 @@ function getStatistics() {
         }
         stats.recentFeedback = feedback;
 
+        // 5. Recent 20 Players Comparison
+        const recentSessions = [];
+        const nameMap = getPlayerNamesMap();
+        if (sessionsData.length > 1) {
+            // Get last 20 sessions
+            for (let i = sessionsData.length - 1; i >= 1 && recentSessions.length < 20; i--) {
+                const s = sessionsData[i];
+                recentSessions.push({
+                    name: nameMap[s[1]] || 'ไม่ระบุ',
+                    score: Number(s[6]) || 0,
+                    level: s[5] || '1',
+                    date: Utilities.formatDate(new Date(s[3]), Session.getScriptTimeZone(), 'HH:mm')
+                });
+            }
+        }
+        stats.recentPlayers = recentSessions.reverse(); // Reverse back to show chronological order in chart
+
         return sendJsonResponse({
             success: true,
             statistics: stats,

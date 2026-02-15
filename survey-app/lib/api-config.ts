@@ -39,6 +39,12 @@ export interface GasStatsResponse {
             comment: string;
             date: string;
         }>;
+        recentPlayers: Array<{
+            name: string;
+            score: number;
+            level: string;
+            date: string;
+        }>;
     };
     generatedAt: string;
 }
