@@ -31,11 +31,8 @@ function SurveyForm() {
         try {
             const action = type === 'pre' ? 'submitPreSurvey' : 'submitPostSurvey';
 
-            // We use a query parameter for action and send data in the body
-            const response = await fetch(`${GAS_WEBAPP_URL}?action=${action}`, {
+            await fetch(`${GAS_WEBAPP_URL}?action=${action}`, {
                 method: 'POST',
-                // mode: 'no-cors' is often needed for GAS POST redirects, 
-                // but it prevents reading the response.
                 body: JSON.stringify({
                     playerId,
                     playerName,
@@ -45,11 +42,9 @@ function SurveyForm() {
                 })
             });
 
-            // For GAS, even if it redirects, the submission usually succeeds
             setSubmitted(true);
         } catch (error) {
             console.error('Survey submission failed', error);
-            // Fallback: still show success if it's a CORS redirect issue (common with GAS)
             setSubmitted(true);
         } finally {
             setLoading(false);
@@ -60,13 +55,13 @@ function SurveyForm() {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 animate-in fade-in zoom-in duration-500">
                 <CheckCircle2 className="w-20 h-20 text-green-500" />
-                <h2 className="text-3xl font-bold text-slate-800">Thank You!</h2>
-                <p className="text-slate-500 text-center max-w-md">Your feedback has been saved. You can close this window and return to the game now.</p>
+                <h2 className="text-3xl font-bold text-slate-800">ขอบคุณสำหรับข้อมูล!</h2>
+                <p className="text-slate-500 text-center max-w-md">ข้อมูลของคุณถูกบันทึกเรียบร้อยแล้ว คุณสามารถปิดหน้าต่างนี้และกลับเข้าสู่เกมได้ทันที</p>
                 <button
                     onClick={() => setSubmitted(false)}
                     className="px-6 py-2 rounded-full border border-indigo-200 text-indigo-600 font-semibold hover:bg-indigo-50 transition-all"
                 >
-                    Submit another
+                    ส่งใหม่อีกครั้ง
                 </button>
             </div>
         );
@@ -76,21 +71,21 @@ function SurveyForm() {
         <div className="max-w-2xl mx-auto shadow-2xl border border-white/20 bg-white/70 backdrop-blur-xl rounded-3xl overflow-hidden">
             <div className="p-8 text-center bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 text-white">
                 <h1 className="text-4xl font-black mb-2 tracking-tight">
-                    {type === 'pre' ? 'READY TO PLAY?' : 'HOW WAS IT?'}
+                    {type === 'pre' ? 'พร้อมเล่นหรือยัง?' : 'เป็นอย่างไรบ้าง?'}
                 </h1>
                 <p className="text-indigo-100 font-medium opacity-90">
-                    Hi <strong>{playerName || 'Player'}</strong>, let us know how you feel!
+                    สวัสดีคุณ <strong>{playerName || 'ผู้เล่น'}</strong> ช่วยบอกเราหน่อยว่าคุณรู้สึกอย่างไร!
                 </p>
                 {(score || level) && (
                     <div className="flex items-center justify-center gap-4 mt-4">
                         {score && (
                             <div className="bg-white/20 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest border border-white/10">
-                                Score: {score}
+                                คะแนน: {score}
                             </div>
                         )}
                         {level && (
                             <div className="bg-white/20 px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest border border-white/10">
-                                Level: {level}
+                                ระดับ: {level}
                             </div>
                         )}
                     </div>
@@ -102,22 +97,22 @@ function SurveyForm() {
                     {!playerName && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-100">
                             <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">Player Name</label>
+                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">ชื่อผู้เล่น</label>
                                 <input
                                     className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
                                     value={playerName}
                                     onChange={(e) => setPlayerName(e.target.value)}
-                                    placeholder="Enter your name"
+                                    placeholder="ใส่ชื่อของคุณ"
                                     required
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">Player ID</label>
+                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">รหัสผู้เล่น</label>
                                 <input
                                     className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
                                     value={playerId}
                                     onChange={(e) => setPlayerId(e.target.value)}
-                                    placeholder="Auto-generated ID"
+                                    placeholder="รหัสระบบอัตโนมัติ"
                                 />
                             </div>
                         </div>
@@ -125,43 +120,43 @@ function SurveyForm() {
 
                     <div className="space-y-10">
                         <SurveySlider
-                            label="Stress Level"
+                            label="ระดับความเครียด"
                             icon={<Brain className="w-5 h-5" />}
                             value={formData.stressLevel}
-                            desc="Current mental state"
+                            desc="สภาวะจิตใจปัจจุบัน"
                             onChange={(v) => setFormData({ ...formData, stressLevel: v })}
                         />
 
                         <SurveySlider
-                            label="Happiness"
+                            label="ความสุข"
                             icon={<Smile className="w-5 h-5" />}
                             value={formData.happinessLevel}
-                            desc="Overall mood"
+                            desc="อารมณ์โดยรวม"
                             onChange={(v) => setFormData({ ...formData, happinessLevel: v })}
                         />
 
                         <SurveySlider
-                            label="Energy"
+                            label="พลังงาน"
                             icon={<Activity className="w-5 h-5" />}
                             value={formData.energyLevel}
-                            desc="Physical & mental vigor"
+                            desc="ความกระฉับกระเฉง"
                             onChange={(v) => setFormData({ ...formData, energyLevel: v })}
                         />
 
                         {type === 'post' && (
                             <>
                                 <SurveySlider
-                                    label="Fun Factor"
+                                    label="ความสนุก"
                                     icon={<Heart className="w-5 h-5" />}
                                     value={formData.funLevel}
-                                    desc="Game enjoyment"
+                                    desc="ความเพลิดเพลินในเกม"
                                     onChange={(v) => setFormData({ ...formData, funLevel: v })}
                                 />
                                 <SurveySlider
-                                    label="Difficulty"
+                                    label="ความยาก"
                                     icon={<Activity className="w-5 h-5" />}
                                     value={formData.difficultyRating}
-                                    desc="Challenge level"
+                                    desc="ระดับความท้าทาย"
                                     onChange={(v) => setFormData({ ...formData, difficultyRating: v })}
                                 />
                             </>
@@ -169,10 +164,10 @@ function SurveyForm() {
                     </div>
 
                     <div className="space-y-2 pt-4">
-                        <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">Additional Thoughts</label>
+                        <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">ความคิดเห็นเพิ่มเติม</label>
                         <textarea
                             className="w-full px-4 py-3 rounded-2xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all min-h-[120px] resize-none"
-                            placeholder="Anything else you'd like to share?"
+                            placeholder="มีอะไรอยากบอกเราเพิ่มเติมไหม?"
                             value={formData.comments}
                             onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
                         />
@@ -186,10 +181,10 @@ function SurveyForm() {
                         {loading ? (
                             <span className="flex items-center gap-2">
                                 <div className="w-5 h-5 border-4 border-white border-t-transparent rounded-full animate-spin" />
-                                Processing...
+                                กำลังประมวลผล...
                             </span>
                         ) : (
-                            'Save Feedback'
+                            'ส่งข้อมูล'
                         )}
                     </button>
                 </form>
@@ -225,9 +220,9 @@ function SurveySlider({ label, icon, value, onChange, desc }: { label: string, i
                 className="w-full h-3 bg-slate-100 rounded-full appearance-none cursor-pointer accent-indigo-600 transition-all hover:h-4 focus:ring-4 focus:ring-indigo-100"
             />
             <div className="flex justify-between text-[11px] font-bold text-slate-400 px-1 uppercase tracking-tighter">
-                <span>Low</span>
-                <span>Moderate</span>
-                <span>Excellent</span>
+                <span>น้อย</span>
+                <span>ปานกลาง</span>
+                <span>มากที่สุด</span>
             </div>
         </div>
     );
