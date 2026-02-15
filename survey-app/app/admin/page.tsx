@@ -38,10 +38,19 @@ export default function AdminDashboard() {
                         { subject: 'ความพึงพอใจ', value: parseFloat(gs.averageScores.postGame?.satisfaction || '0') },
                         { subject: 'ความท้าทาย', value: parseFloat(gs.averageScores.postGame?.difficulty || '0') },
                     ],
-                    pieData: [
-                        { name: 'ก่อนเล่น', value: gs.completedSurveys },
-                        { name: 'หลังเล่น', value: gs.completedSurveys },
-                    ]
+                    ageData: Object.keys(gs.demographics.ageGroups).map(key => ({
+                        name: key,
+                        value: gs.demographics.ageGroups[key]
+                    })).filter(d => d.value > 0),
+                    expPerfData: gs.experiencePerformance.map(d => ({
+                        name: d.name,
+                        score: parseInt(d.score)
+                    })),
+                    timelineData: gs.dailyTrends.map(d => ({
+                        date: d.date.split('-').slice(1).join('/'), // View as MM/DD
+                        score: parseInt(d.avgScore),
+                        happy: parseFloat(d.avgHappiness)
+                    }))
                 };
                 setStats(transformedStats);
                 setLoading(false);
@@ -87,7 +96,7 @@ export default function AdminDashboard() {
         </div>
     );
 
-    const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f43f5e'];
+    const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f43f5e', '#10b981'];
 
     return (
         <div className="min-h-screen bg-[#f8fafc] text-slate-900 selection:bg-indigo-100 pb-20">
@@ -103,16 +112,6 @@ export default function AdminDashboard() {
                             <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em] mt-1">Shoot till Dawn • Analytics v2</p>
                         </div>
                     </div>
-                    <div className="hidden md:flex items-center gap-6">
-                        <div className="flex items-center gap-2 text-sm font-bold text-slate-400">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            ระบบปกติ (Real-time)
-                        </div>
-                        <div className="h-8 w-px bg-slate-100" />
-                        <button className="p-2 hover:bg-slate-50 rounded-lg transition-colors">
-                            <Users className="w-5 h-5 text-slate-400" />
-                        </button>
-                    </div>
                 </div>
             </nav>
 
@@ -124,7 +123,7 @@ export default function AdminDashboard() {
                         value={stats.totalPlayers}
                         subLabel="ลงทะเบียนแล้ว"
                         icon={<Users className="w-6 h-6" />}
-                        trend="+12%"
+                        trend="Real-time"
                         color="indigo"
                     />
                     <StatCard
@@ -132,15 +131,15 @@ export default function AdminDashboard() {
                         value={stats.totalSessions}
                         subLabel="Sessions ทั้งหมด"
                         icon={<Activity className="w-6 h-6" />}
-                        trend="+5%"
+                        trend="Total"
                         color="purple"
                     />
                     <StatCard
                         label="แบบสำรวจ"
                         value={stats.completedSurveys}
-                        subLabel="รวม Pre/Post survey"
+                        subLabel="Completed surveys"
                         icon={<FileText className="w-6 h-6" />}
-                        trend="+18%"
+                        trend="Latest"
                         color="rose"
                     />
                     <StatCard
@@ -148,7 +147,7 @@ export default function AdminDashboard() {
                         value={stats.averageScore || 0}
                         subLabel="จากทุก Session"
                         icon={<Award className="w-6 h-6" />}
-                        trend="+2.4k"
+                        trend="Global"
                         color="emerald"
                     />
                 </div>
@@ -231,42 +230,116 @@ export default function AdminDashboard() {
                         </div>
                     </ChartContainer>
 
-                    {/* Timeline Analysis (Mocked or simplified based on stats) */}
-                    <ChartContainer title="แนวโน้มความสุขตลอดเวลา" subtitle="ความสุขที่เปลี่ยนไปในแต่ละวัน" className="lg:col-span-12">
-                        <div className="h-[300px] w-full mt-6">
+                    {/* Age Demographics */}
+                    <ChartContainer title="กลุ่มผู้เล่นตามช่วงอายุ" subtitle="จำนวนผู้เล่นแยกตามกลุ่มอายุ" className="lg:col-span-4">
+                        <div className="h-[300px] w-full mt-4">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={[
-                                    { date: 'Mon', val: 6 },
-                                    { date: 'Tue', val: 7.5 },
-                                    { date: 'Wed', val: 6.8 },
-                                    { date: 'Thu', val: 8.2 },
-                                    { date: 'Fri', val: 7.9 },
-                                    { date: 'Sat', val: 9.1 },
-                                    { date: 'Sun', val: 8.5 },
-                                ]}>
+                                <PieChart>
+                                    <Pie
+                                        data={stats.ageData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={100}
+                                        fill="#8884d8"
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        {stats.ageData.map((entry: any, index: number) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend verticalAlign="bottom" height={36} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </ChartContainer>
+
+                    {/* Experience Performance */}
+                    <ChartContainer title="คะแนนตามประสบการณ์" subtitle="คะแนนเฉลี่ยแยกตามระดับทักษะ" className="lg:col-span-8">
+                        <div className="h-[300px] w-full mt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart layout="vertical" data={stats.expPerfData} margin={{ left: 20 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                                    <XAxis type="number" hide />
+                                    <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12, fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                    <Tooltip
+                                        cursor={{ fill: 'transparent' }}
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Bar dataKey="score" fill="#6366f1" radius={[0, 10, 10, 0]} barSize={30} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </ChartContainer>
+
+                    {/* Timeline Analysis - Integrated with real data */}
+                    <ChartContainer title="แนวโน้มความสุขและคะแนนสุทธิ" subtitle="ความสุขที่เปลี่ยนไปและคะแนนเฉลี่ยรายวัน" className="lg:col-span-8">
+                        <div className="h-[350px] w-full mt-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={stats.timelineData}>
                                     <defs>
-                                        <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
+                                        <linearGradient id="colorHappy" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
                                             <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                     <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} fontWeight={600} tickLine={false} axisLine={false} dy={10} />
-                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} domain={[0, 10]} />
+                                    <YAxis yAxisId="left" stroke="#6366f1" fontSize={11} tickLine={false} axisLine={false} domain={[0, 10]} />
+                                    <YAxis yAxisId="right" orientation="right" stroke="#10b981" fontSize={11} tickLine={false} axisLine={false} />
                                     <Tooltip
                                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
                                     />
+                                    <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
                                     <Area
+                                        yAxisId="left"
                                         type="monotone"
-                                        dataKey="val"
-                                        name="ค่าเฉลี่ยความสุข"
+                                        dataKey="happy"
+                                        name="ความสุขเฉลี่ย (1-10)"
                                         stroke="#6366f1"
                                         strokeWidth={4}
                                         fillOpacity={1}
-                                        fill="url(#colorVal)"
+                                        fill="url(#colorHappy)"
+                                    />
+                                    <Area
+                                        yAxisId="right"
+                                        type="monotone"
+                                        dataKey="score"
+                                        name="คะแนนเฉลี่ย"
+                                        stroke="#10b981"
+                                        strokeWidth={4}
+                                        fillOpacity={1}
+                                        fill="url(#colorScore)"
                                     />
                                 </AreaChart>
                             </ResponsiveContainer>
+                        </div>
+                    </ChartContainer>
+
+                    {/* Recent Feedback Feed */}
+                    <ChartContainer title="ความคิดเห็นล่าสุด" subtitle="ฟีดข้อมูลจากผู้เล่น 5 อันดับล่าสุด" className="lg:col-span-4">
+                        <div className="flex flex-col gap-4 mt-6 h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                            {stats.recentFeedback?.map((fb: any, i: number) => (
+                                <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-white transition-all hover:bg-white hover:shadow-md group">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{fb.player}</span>
+                                        <span className="text-[10px] font-bold text-slate-400">{fb.date}</span>
+                                    </div>
+                                    <p className="text-sm text-slate-600 font-medium leading-relaxed group-hover:text-slate-900 transition-colors">"{fb.comment}"</p>
+                                </div>
+                            ))}
+                            {(!stats.recentFeedback || stats.recentFeedback.length === 0) && (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+                                    <Clock className="w-8 h-8 opacity-20" />
+                                    <p className="text-xs font-bold uppercase tracking-widest">ยังไม่มีความคิดเห็น</p>
+                                </div>
+                            )}
                         </div>
                     </ChartContainer>
 

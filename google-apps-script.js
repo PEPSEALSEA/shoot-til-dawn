@@ -636,85 +636,161 @@ function getStatistics() {
             totalPlayers: 0,
             totalSessions: 0,
             completedSurveys: 0,
-            averageScores: {},
-            trends: {}
+            averageScore: 0,
+            averageScores: { preGame: {}, postGame: {} },
+            demographics: {
+                gender: {},
+                ageGroups: { 'น้อยกว่า 18': 0, '18-25': 0, '26-35': 0, '36 ขึ้นไป': 0 }
+            },
+            experiencePerformance: {}, // Avg score by experience
+            dailyTrends: [] // Date, sessions, avgScore, avgHappiness
         };
 
-        // นับผู้เล่น
+        // 1. Demographics & Players
         const playersSheet = getOrCreateSheet(SHEET_NAMES.PLAYERS);
         const playersData = playersSheet.getDataRange().getValues();
         stats.totalPlayers = playersData.length - 1;
 
-        // นับ sessions
+        const playerExpMap = {}; // เพื่อใช้ต่อกับคะแนน
+
+        if (playersData.length > 1) {
+            for (let i = 1; i < playersData.length; i++) {
+                const p = playersData[i];
+                const playerId = p[0];
+                const age = Number(p[2]);
+                const gender = p[3] || 'ไม่ระบุ';
+                const exp = p[7] || 'เริ่มต้น';
+
+                playerExpMap[playerId] = exp;
+
+                // Gender count
+                stats.demographics.gender[gender] = (stats.demographics.gender[gender] || 0) + 1;
+
+                // Age group
+                if (age < 18) stats.demographics.ageGroups['น้อยกว่า 18']++;
+                else if (age <= 25) stats.demographics.ageGroups['18-25']++;
+                else if (age <= 35) stats.demographics.ageGroups['26-35']++;
+                else stats.demographics.ageGroups['36 ขึ้นไป']++;
+            }
+        }
+
+        // 2. Sessions & Trends
         const sessionsSheet = getOrCreateSheet(SHEET_NAMES.SESSIONS);
         const sessionsData = sessionsSheet.getDataRange().getValues();
         stats.totalSessions = sessionsData.length - 1;
 
-        // คำนวณค่าเฉลี่ย pre-survey
+        const dailyData = {}; // { 'YYYY-MM-DD': { sum: 0, count: 0 } }
+        const expData = {}; // { 'ExpLevel': { sum: 0, count: 0 } }
+
+        if (sessionsData.length > 1) {
+            let totalScoreSum = 0;
+            let totalScoreCount = 0;
+
+            for (let i = 1; i < sessionsData.length; i++) {
+                const s = sessionsData[i];
+                const playerId = s[1];
+                const date = Utilities.formatDate(new Date(s[2]), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+                const score = Number(s[6]);
+
+                if (!isNaN(score)) {
+                    totalScoreSum += score;
+                    totalScoreCount++;
+
+                    // Daily trend
+                    if (!dailyData[date]) dailyData[date] = { scoreSum: 0, count: 0, happinessSum: 0, happyCount: 0 };
+                    dailyData[date].scoreSum += score;
+                    dailyData[date].count++;
+
+                    // Exp performance
+                    const exp = playerExpMap[playerId] || 'ไม่ระบุ';
+                    if (!expData[exp]) expData[exp] = { sum: 0, count: 0 };
+                    expData[exp].sum += score;
+                    expData[exp].count++;
+                }
+            }
+            stats.averageScore = totalScoreCount > 0 ? (totalScoreSum / totalScoreCount).toFixed(0) : 0;
+        }
+
+        // 3. Surveys & Sentiment
         const preSheet = getOrCreateSheet(SHEET_NAMES.PRE_SURVEY);
         const preData = preSheet.getDataRange().getValues();
-
         if (preData.length > 1) {
-            let stressSum = 0, happinessSum = 0, energySum = 0;
-            let count = 0;
-
+            let sSum = 0, hSum = 0, eSum = 0, count = 0;
             for (let i = 1; i < preData.length; i++) {
-                if (preData[i][4]) stressSum += Number(preData[i][4]);
-                if (preData[i][5]) happinessSum += Number(preData[i][5]);
-                if (preData[i][6]) energySum += Number(preData[i][6]);
+                if (preData[i][4]) sSum += Number(preData[i][4]);
+                if (preData[i][5]) hSum += Number(preData[i][5]);
+                if (preData[i][6]) eSum += Number(preData[i][6]);
                 count++;
             }
-
             stats.averageScores.preGame = {
-                stress: (stressSum / count).toFixed(2),
-                happiness: (happinessSum / count).toFixed(2),
-                energy: (energySum / count).toFixed(2)
+                stress: (sSum / count).toFixed(2),
+                happiness: (hSum / count).toFixed(2),
+                energy: (eSum / count).toFixed(2)
             };
         }
 
-        // คำนวณค่าเฉลี่ย post-survey
         const postSheet = getOrCreateSheet(SHEET_NAMES.POST_SURVEY);
         const postData = postSheet.getDataRange().getValues();
-
         if (postData.length > 1) {
-            let stressSum = 0, happinessSum = 0, funSum = 0, satisfactionSum = 0, energySum = 0, difficultySum = 0;
-            let count = 0;
-
+            let sSum = 0, hSum = 0, fSum = 0, satSum = 0, eSum = 0, dSum = 0, count = 0;
             for (let i = 1; i < postData.length; i++) {
-                if (postData[i][4]) stressSum += Number(postData[i][4]);
-                if (postData[i][5]) happinessSum += Number(postData[i][5]);
-                if (postData[i][6]) funSum += Number(postData[i][6]);
-                if (postData[i][7]) satisfactionSum += Number(postData[i][7]);
-                if (postData[i][8]) energySum += Number(postData[i][8]);
-                if (postData[i][9]) difficultySum += Number(postData[i][9]);
+                const p = postData[i];
+                const date = Utilities.formatDate(new Date(p[3]), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+                const happy = Number(p[5]);
+
+                if (p[4]) sSum += Number(p[4]);
+                if (p[5]) hSum += happy;
+                if (p[6]) fSum += Number(p[6]);
+                if (p[7]) satSum += Number(p[7]);
+                if (p[8]) eSum += Number(p[8]);
+                if (p[9]) dSum += Number(p[9]);
                 count++;
+
+                // Add happiness to daily trend
+                if (dailyData[date] && !isNaN(happy)) {
+                    dailyData[date].happinessSum += happy;
+                    dailyData[date].happyCount++;
+                }
             }
-
             stats.averageScores.postGame = {
-                stress: (stressSum / count).toFixed(2),
-                happiness: (happinessSum / count).toFixed(2),
-                fun: (funSum / count).toFixed(2),
-                satisfaction: (satisfactionSum / count).toFixed(2),
-                energy: (energySum / count).toFixed(2),
-                difficulty: (difficultySum / count).toFixed(2)
+                stress: (sSum / count).toFixed(2),
+                happiness: (hSum / count).toFixed(2),
+                fun: (fSum / count).toFixed(2),
+                satisfaction: (satSum / count).toFixed(2),
+                energy: (eSum / count).toFixed(2),
+                difficulty: (dSum / count).toFixed(2)
             };
-
             stats.completedSurveys = count;
         }
 
-        // Calculate Average Score
-        if (sessionsData.length > 1) {
-            let scoreSum = 0;
-            let scoreCount = 0;
-            for (let i = 1; i < sessionsData.length; i++) {
-                const s = Number(sessionsData[i][6]);
-                if (!isNaN(s)) {
-                    scoreSum += s;
-                    scoreCount++;
+        // Finalize Trends & Performance
+        stats.experiencePerformance = Object.keys(expData).map(exp => ({
+            name: exp,
+            score: (expData[exp].sum / expData[exp].count).toFixed(0)
+        }));
+
+        stats.dailyTrends = Object.keys(dailyData).sort().map(date => ({
+            date: date,
+            sessions: dailyData[date].count,
+            avgScore: (dailyData[date].scoreSum / dailyData[date].count).toFixed(0),
+            avgHappiness: dailyData[date].happyCount > 0 ? (dailyData[date].happinessSum / dailyData[date].happyCount).toFixed(2) : 0
+        }));
+
+        // 4. Recent Feedback
+        const feedback = [];
+        if (postData.length > 1) {
+            for (let i = postData.length - 1; i >= 1 && feedback.length < 5; i--) {
+                const comment = postData[i][14];
+                if (comment && comment.trim() !== '') {
+                    feedback.push({
+                        player: postData[i][1],
+                        comment: comment,
+                        date: Utilities.formatDate(new Date(postData[i][3]), Session.getScriptTimeZone(), 'dd/MM HH:mm')
+                    });
                 }
             }
-            stats.averageScore = scoreCount > 0 ? (scoreSum / scoreCount).toFixed(0) : 0;
         }
+        stats.recentFeedback = feedback;
 
         return sendJsonResponse({
             success: true,

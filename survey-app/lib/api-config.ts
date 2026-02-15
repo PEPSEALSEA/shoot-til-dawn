@@ -7,6 +7,7 @@ export interface GasStatsResponse {
         totalPlayers: number;
         totalSessions: number;
         completedSurveys: number;
+        averageScore: string;
         averageScores: {
             preGame: {
                 stress: string;
@@ -22,6 +23,22 @@ export interface GasStatsResponse {
                 difficulty: string;
             };
         };
+        demographics: {
+            gender: Record<string, number>;
+            ageGroups: Record<string, number>;
+        };
+        experiencePerformance: Array<{ name: string, score: string }>;
+        dailyTrends: Array<{
+            date: string;
+            sessions: number;
+            avgScore: string;
+            avgHappiness: string;
+        }>;
+        recentFeedback: Array<{
+            player: string;
+            comment: string;
+            date: string;
+        }>;
     };
     generatedAt: string;
 }
