@@ -853,22 +853,22 @@ function getStatistics() {
         }
         stats.recentFeedback = feedback;
 
-        // 5. Recent 20 Players Comparison
-        const recentSessions = [];
+        // 5. Recent 20 Players Emotional Comparison
+        const recentEmotional = [];
         const nameMap = getPlayerNamesMap();
-        if (sessionsData.length > 1) {
-            // Get last 20 sessions
-            for (let i = sessionsData.length - 1; i >= 1 && recentSessions.length < 20; i--) {
-                const s = sessionsData[i];
-                recentSessions.push({
-                    name: nameMap[s[1]] || 'ไม่ระบุ',
-                    score: Number(s[6]) || 0,
-                    level: s[5] || '1',
-                    date: Utilities.formatDate(new Date(s[3]), Session.getScriptTimeZone(), 'HH:mm')
+        if (postData.length > 1) {
+            // Get last 20 surveys
+            for (let i = postData.length - 1; i >= 1 && recentEmotional.length < 20; i--) {
+                const p = postData[i];
+                recentEmotional.push({
+                    name: (nameMap[p[1]] || 'ไม่ระบุ') + ' (' + Utilities.formatDate(new Date(p[3]), Session.getScriptTimeZone(), 'HH:mm') + ')',
+                    stress: Number(p[4]) || 0,
+                    happiness: Number(p[5]) || 0,
+                    energy: Number(p[8]) || 0,
                 });
             }
         }
-        stats.recentPlayers = recentSessions.reverse(); // Reverse back to show chronological order in chart
+        stats.recentEmotionalComparison = recentEmotional.reverse();
 
         return sendJsonResponse({
             success: true,

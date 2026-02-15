@@ -378,6 +378,38 @@ export default function AdminDashboard() {
                         </div>
                     </ChartContainer>
 
+                    {/* Recent 20 Players Detailed Emotional Comparison Chart */}
+                    <ChartContainer title="เปรียบเทียบสภาวะอารมณ์ 20 ผู้เล่นล่าสุด" subtitle="เปรียบเทียบ ความเครียด, ความสุข, และพลังงาน รายบุคคล" className="lg:col-span-12">
+                        <div className="h-[450px] w-full mt-6">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={stats.recentEmotionalComparison} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis
+                                        dataKey="name"
+                                        angle={-45}
+                                        textAnchor="end"
+                                        interval={0}
+                                        height={120}
+                                        stroke="#94a3b8"
+                                        fontSize={10}
+                                        fontWeight={700}
+                                        tickLine={false}
+                                        axisLine={false}
+                                    />
+                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} domain={[0, 10]} />
+                                    <Tooltip
+                                        cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
+                                    <Bar dataKey="stress" name="ความเครียด" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={12} />
+                                    <Bar dataKey="happiness" name="ความสุข" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={12} />
+                                    <Bar dataKey="energy" name="พลังงาน" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </ChartContainer>
+
                 </div>
             </main>
         </div>

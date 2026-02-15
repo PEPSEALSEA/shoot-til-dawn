@@ -39,11 +39,11 @@ export interface GasStatsResponse {
             comment: string;
             date: string;
         }>;
-        recentPlayers: Array<{
+        recentEmotionalComparison: Array<{
             name: string;
-            score: number;
-            level: string;
-            date: string;
+            stress: number;
+            happiness: number;
+            energy: number;
         }>;
     };
     generatedAt: string;
