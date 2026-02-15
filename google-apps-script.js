@@ -388,6 +388,17 @@ function submitPostSurvey(data) {
 
         sheet.appendRow(row);
 
+        // บันทึกคะแนนลงใน GameSessions ด้วยถ้ามีการแนบ score มา
+        if (data.score !== undefined || data.level !== undefined) {
+            submitScore({
+                playerId: data.playerId,
+                sessionId: data.sessionId || surveyId,
+                score: data.score,
+                level: data.level,
+                notes: 'บันทึกอัตโนมัติจากแบบสอบถาม'
+            });
+        }
+
         // คำนวณการเปลี่ยนแปลง (ถ้ามี pre-survey)
         const comparison = calculateSurveyComparison(data.sessionId);
 
