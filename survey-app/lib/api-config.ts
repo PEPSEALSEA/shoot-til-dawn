@@ -1,5 +1,5 @@
 // Replace this with your deployed Google Apps Script Web App URL
-export const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyV-YOUR-ID-HERE/exec';
+export const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbz86ZDccpSSSk4hplHskylUKNiqzyVlbcQBtGwV6-nvkiZyJRswsZHFSmDUUGpBmAc/exec';
 
 export interface GasStatsResponse {
     success: boolean;
