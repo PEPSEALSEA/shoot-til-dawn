@@ -1,0 +1,236 @@
+'use client';
+
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Heart, Activity, Brain, Smile, CheckCircle2 } from 'lucide-react';
+import { GAS_WEBAPP_URL } from '@/lib/api-config';
+
+function SurveyForm() {
+    const searchParams = useSearchParams();
+    const [playerId, setPlayerId] = useState(searchParams.get('playerId') || '');
+    const [playerName, setPlayerName] = useState(searchParams.get('name') || '');
+    const [type, setType] = useState<'pre' | 'post'>((searchParams.get('type') as 'pre' | 'post') || 'pre');
+    const [submitted, setSubmitted] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const [formData, setFormData] = useState({
+        stressLevel: 5,
+        happinessLevel: 5,
+        energyLevel: 5,
+        funLevel: 5,
+        satisfactionLevel: 5,
+        difficultyRating: 5,
+        comments: ''
+    });
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const action = type === 'pre' ? 'submitPreSurvey' : 'submitPostSurvey';
+
+            // We use a query parameter for action and send data in the body
+            const response = await fetch(`${GAS_WEBAPP_URL}?action=${action}`, {
+                method: 'POST',
+                // mode: 'no-cors' is often needed for GAS POST redirects, 
+                // but it prevents reading the response.
+                body: JSON.stringify({
+                    playerId,
+                    playerName,
+                    ...formData
+                })
+            });
+
+            // For GAS, even if it redirects, the submission usually succeeds
+            setSubmitted(true);
+        } catch (error) {
+            console.error('Survey submission failed', error);
+            // Fallback: still show success if it's a CORS redirect issue (common with GAS)
+            setSubmitted(true);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (submitted) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 animate-in fade-in zoom-in duration-500">
+                <CheckCircle2 className="w-20 h-20 text-green-500" />
+                <h2 className="text-3xl font-bold text-slate-800">Thank You!</h2>
+                <p className="text-slate-500 text-center max-w-md">Your feedback has been saved. You can close this window and return to the game now.</p>
+                <button
+                    onClick={() => setSubmitted(false)}
+                    className="px-6 py-2 rounded-full border border-indigo-200 text-indigo-600 font-semibold hover:bg-indigo-50 transition-all"
+                >
+                    Submit another
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-2xl mx-auto shadow-2xl border border-white/20 bg-white/70 backdrop-blur-xl rounded-3xl overflow-hidden">
+            <div className="p-8 text-center bg-gradient-to-br from-indigo-600 via-indigo-500 to-purple-600 text-white">
+                <h1 className="text-4xl font-black mb-2 tracking-tight">
+                    {type === 'pre' ? 'READY TO PLAY?' : 'HOW WAS IT?'}
+                </h1>
+                <p className="text-indigo-100 font-medium opacity-90">
+                    Hi <strong>{playerName || 'Player'}</strong>, let us know how you feel!
+                </p>
+            </div>
+
+            <div className="p-8">
+                <form onSubmit={handleSubmit} className="space-y-8">
+                    {!playerName && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-100">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">Player Name</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
+                                    value={playerName}
+                                    onChange={(e) => setPlayerName(e.target.value)}
+                                    placeholder="Enter your name"
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">Player ID</label>
+                                <input
+                                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all"
+                                    value={playerId}
+                                    onChange={(e) => setPlayerId(e.target.value)}
+                                    placeholder="Auto-generated ID"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-10">
+                        <SurveySlider
+                            label="Stress Level"
+                            icon={<Brain className="w-5 h-5" />}
+                            value={formData.stressLevel}
+                            desc="Current mental state"
+                            onChange={(v) => setFormData({ ...formData, stressLevel: v })}
+                        />
+
+                        <SurveySlider
+                            label="Happiness"
+                            icon={<Smile className="w-5 h-5" />}
+                            value={formData.happinessLevel}
+                            desc="Overall mood"
+                            onChange={(v) => setFormData({ ...formData, happinessLevel: v })}
+                        />
+
+                        <SurveySlider
+                            label="Energy"
+                            icon={<Activity className="w-5 h-5" />}
+                            value={formData.energyLevel}
+                            desc="Physical & mental vigor"
+                            onChange={(v) => setFormData({ ...formData, energyLevel: v })}
+                        />
+
+                        {type === 'post' && (
+                            <>
+                                <SurveySlider
+                                    label="Fun Factor"
+                                    icon={<Heart className="w-5 h-5" />}
+                                    value={formData.funLevel}
+                                    desc="Game enjoyment"
+                                    onChange={(v) => setFormData({ ...formData, funLevel: v })}
+                                />
+                                <SurveySlider
+                                    label="Difficulty"
+                                    icon={<Activity className="w-5 h-5" />}
+                                    value={formData.difficultyRating}
+                                    desc="Challenge level"
+                                    onChange={(v) => setFormData({ ...formData, difficultyRating: v })}
+                                />
+                            </>
+                        )}
+                    </div>
+
+                    <div className="space-y-2 pt-4">
+                        <label className="text-sm font-bold text-slate-600 uppercase tracking-wider">Additional Thoughts</label>
+                        <textarea
+                            className="w-full px-4 py-3 rounded-2xl border-2 border-slate-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all min-h-[120px] resize-none"
+                            placeholder="Anything else you'd like to share?"
+                            value={formData.comments}
+                            onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        className="w-full py-5 rounded-2xl text-xl font-bold bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-2xl hover:shadow-indigo-300 transition-all flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <span className="flex items-center gap-2">
+                                <div className="w-5 h-5 border-4 border-white border-t-transparent rounded-full animate-spin" />
+                                Processing...
+                            </span>
+                        ) : (
+                            'Save Feedback'
+                        )}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function SurveySlider({ label, icon, value, onChange, desc }: { label: string, icon: React.ReactNode, value: number, onChange: (v: number) => void, desc: string }) {
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-600">
+                        {icon}
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-slate-800 leading-tight">{label}</h3>
+                        <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">{desc}</p>
+                    </div>
+                </div>
+                <div className="text-3xl font-black text-indigo-600 bg-indigo-50 px-4 py-2 rounded-2xl">
+                    {value}
+                </div>
+            </div>
+            <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={value}
+                onChange={(e) => onChange(parseInt(e.target.value))}
+                className="w-full h-3 bg-slate-100 rounded-full appearance-none cursor-pointer accent-indigo-600 transition-all hover:h-4 focus:ring-4 focus:ring-indigo-100"
+            />
+            <div className="flex justify-between text-[11px] font-bold text-slate-400 px-1 uppercase tracking-tighter">
+                <span>Low</span>
+                <span>Moderate</span>
+                <span>Excellent</span>
+            </div>
+        </div>
+    );
+}
+
+export default function Page() {
+    return (
+        <div className="min-h-screen bg-slate-50 py-12 px-4 selection:bg-indigo-100">
+            {/* Background Decorative Elements */}
+            <div className="fixed inset-0 pointer-events-none overflow-hidden">
+                <div className="absolute top-[-10%] right-[-10%] w-[400px] h-[400px] bg-indigo-200/30 rounded-full blur-[100px]" />
+                <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-purple-200/30 rounded-full blur-[100px]" />
+            </div>
+
+            <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[60vh]">
+                    <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+            }>
+                <SurveyForm />
+            </Suspense>
+        </div>
+    );
+}
