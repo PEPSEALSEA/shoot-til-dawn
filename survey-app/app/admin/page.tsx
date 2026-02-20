@@ -80,7 +80,7 @@ export default function AdminDashboard() {
         const comparisonData = [
             { metric: 'ความเครียด', pre: +preAvg.stress || 0, post: +postAvg.stress || 0, lower_is_better: true },
             { metric: 'ความสุข', pre: +preAvg.happiness || 0, post: +postAvg.happiness || 0, lower_is_better: false },
-            { metric: 'ความตื่นตัว', pre: +preAvg.energy || 0, post: +postAvg.energy || 0, lower_is_better: false },
+            { metric: 'ความดีด', pre: +preAvg.energy || 0, post: +postAvg.energy || 0, lower_is_better: false },
         ].map(d => ({
             ...d,
             delta: delta(d.post, d.pre),
@@ -95,7 +95,7 @@ export default function AdminDashboard() {
             { subject: 'ความพึงพอใจ', value: +postAvg.satisfaction || 0 },
             { subject: 'ความท้าทาย', value: +postAvg.difficulty || 0 },
             { subject: 'ความสุข', value: +postAvg.happiness || 0 },
-            { subject: 'ความตื่นตัว', value: +postAvg.energy || 0 },
+            { subject: 'ความดีด', value: +postAvg.energy || 0 },
         ];
 
         // Per-player delta table from getSurveyChanges
@@ -282,7 +282,7 @@ export default function AdminDashboard() {
                                 pre={+d.preAvg.happiness || 0} post={+d.postAvg.happiness || 0}
                             />
                             <ResearchCard
-                                title="ผลการวิจัย: ความตื่นตัว"
+                                title="ผลการวิจัย: ความดีด"
                                 icon="⚡" color={C.emerald}
                                 avgDelta={d.avgDeltaEnergy}
                                 improved={d.improvedEnergy} total={d.n}
@@ -501,7 +501,7 @@ export default function AdminDashboard() {
                                         {[
                                             { name: 'ความเครียด', pre: +d.preAvg.stress || 0, post: +d.postAvg.stress || 0, lowerBetter: true },
                                             { name: 'ความสุข', pre: +d.preAvg.happiness || 0, post: +d.postAvg.happiness || 0, lowerBetter: false },
-                                            { name: 'ความตื่นตัว', pre: +d.preAvg.energy || 0, post: +d.postAvg.energy || 0, lowerBetter: false },
+                                            { name: 'ความดีด', pre: +d.preAvg.energy || 0, post: +d.postAvg.energy || 0, lowerBetter: false },
                                             { name: 'ความสนุก (post)', pre: 0, post: +d.postAvg.fun || 0, lowerBetter: false },
                                             { name: 'ความพึงพอใจ (post)', pre: 0, post: +d.postAvg.satisfaction || 0, lowerBetter: false },
                                             { name: 'ความท้าทาย (post)', pre: 0, post: +d.postAvg.difficulty || 0, lowerBetter: false },
