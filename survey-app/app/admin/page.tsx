@@ -80,7 +80,7 @@ export default function AdminDashboard() {
         const comparisonData = [
             { metric: 'ความเครียด', pre: +preAvg.stress || 0, post: +postAvg.stress || 0, lower_is_better: true },
             { metric: 'ความสุข', pre: +preAvg.happiness || 0, post: +postAvg.happiness || 0, lower_is_better: false },
-            { metric: 'พลังงาน', pre: +preAvg.energy || 0, post: +postAvg.energy || 0, lower_is_better: false },
+            { metric: 'ความตื่นตัว', pre: +preAvg.energy || 0, post: +postAvg.energy || 0, lower_is_better: false },
         ].map(d => ({
             ...d,
             delta: delta(d.post, d.pre),
@@ -95,7 +95,7 @@ export default function AdminDashboard() {
             { subject: 'ความพึงพอใจ', value: +postAvg.satisfaction || 0 },
             { subject: 'ความท้าทาย', value: +postAvg.difficulty || 0 },
             { subject: 'ความสุข', value: +postAvg.happiness || 0 },
-            { subject: 'พลังงาน', value: +postAvg.energy || 0 },
+            { subject: 'ความตื่นตัว', value: +postAvg.energy || 0 },
         ];
 
         // Per-player delta table from getSurveyChanges
@@ -118,12 +118,15 @@ export default function AdminDashboard() {
 
         // Summary stats
         const n = changes.length;
-        const avgDeltaStress = avg(deltaDistStress);
-        const avgDeltaHappy = avg(deltaDistHappy);
-        const avgDeltaEnergy = avg(deltaDistEnergy);
-        const improvedHappy = changes.filter(c => c.delta.happiness > 0).length;
-        const reducedStress = changes.filter(c => c.delta.stress < 0).length;
-        const improvedEnergy = changes.filter(c => c.delta.energy > 0).length;
+        const hasMatchedData = n > 0;
+
+        // If no matched pairs, derive delta from averaged pre/post scores as fallback
+        const avgDeltaStress = hasMatchedData ? avg(deltaDistStress) : delta(+postAvg.stress || 0, +preAvg.stress || 0);
+        const avgDeltaHappy = hasMatchedData ? avg(deltaDistHappy) : delta(+postAvg.happiness || 0, +preAvg.happiness || 0);
+        const avgDeltaEnergy = hasMatchedData ? avg(deltaDistEnergy) : delta(+postAvg.energy || 0, +preAvg.energy || 0);
+        const improvedHappy = hasMatchedData ? changes.filter(c => c.delta.happiness > 0).length : -1;
+        const reducedStress = hasMatchedData ? changes.filter(c => c.delta.stress < 0).length : -1;
+        const improvedEnergy = hasMatchedData ? changes.filter(c => c.delta.energy > 0).length : -1;
 
         // Histogram bins for delta stress (-5 to +5)
         const bins = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
@@ -133,6 +136,7 @@ export default function AdminDashboard() {
         const happyBins = bins.map(b => ({
             bin: `${sign(b)}${b}`, count: deltaDistHappy.filter(v => Math.round(v) === b).length
         }));
+        const hasHistogramData = hasMatchedData;
 
         // Age pie
         const ageData = Object.entries(gs.demographics?.ageGroups ?? {})
@@ -164,7 +168,7 @@ export default function AdminDashboard() {
             comparisonData, experienceData, playerRows,
             avgDeltaStress, avgDeltaHappy, avgDeltaEnergy,
             improvedHappy, reducedStress, improvedEnergy, n,
-            stressBins, happyBins,
+            stressBins, happyBins, hasHistogramData, hasMatchedData,
             ageData, genderData, timelineData, expPerfData, recentEmotional,
             preAvg, postAvg,
         };
@@ -278,7 +282,7 @@ export default function AdminDashboard() {
                                 pre={+d.preAvg.happiness || 0} post={+d.postAvg.happiness || 0}
                             />
                             <ResearchCard
-                                title="ผลการวิจัย: พลังงาน"
+                                title="ผลการวิจัย: ความตื่นตัว"
                                 icon="⚡" color={C.emerald}
                                 avgDelta={d.avgDeltaEnergy}
                                 improved={d.improvedEnergy} total={d.n}
@@ -435,36 +439,44 @@ export default function AdminDashboard() {
                         {/* Delta histogram */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="grid-2">
                             <div className="card">
-                                <ChartTitle title="การกระจายความเปลี่ยนแปลง: ความเครียด" sub="Distribution of Δ stress (negative = reduced)" />
-                                <ResponsiveContainer width="100%" height={240}>
-                                    <BarChart data={d.stressBins} margin={{ top: 8 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
-                                        <XAxis dataKey="bin" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                                        <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
-                                        <ReferenceLine x="0" stroke="#64748b" strokeDasharray="4 4" />
-                                        <Bar dataKey="count" name="จำนวน" radius={[6, 6, 0, 0]}
-                                            fill={C.red}
-                                            label={{ position: 'top', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
-                                        />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                                <ChartTitle title="การกระจาย Δ ความเครียด" sub="Distribution across matched sessions (negative = stress reduced)" />
+                                {!d.hasHistogramData ? (
+                                    <EmptyHistogram label="ต้องการข้อมูล Pre+Post ที่ match sessionId เดียวกัน" />
+                                ) : (
+                                    <ResponsiveContainer width="100%" height={240}>
+                                        <BarChart data={d.stressBins} margin={{ top: 8 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                            <XAxis dataKey="bin" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                            <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                            <ReferenceLine x="0" stroke="#64748b" strokeDasharray="4 4" />
+                                            <Bar dataKey="count" name="จำนวน" radius={[6, 6, 0, 0]}
+                                                fill={C.red}
+                                                label={{ position: 'top', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                                            />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                )}
                             </div>
                             <div className="card">
-                                <ChartTitle title="การกระจายความเปลี่ยนแปลง: ความสุข" sub="Distribution of Δ happiness (positive = improved)" />
-                                <ResponsiveContainer width="100%" height={240}>
-                                    <BarChart data={d.happyBins} margin={{ top: 8 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
-                                        <XAxis dataKey="bin" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
-                                        <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
-                                        <ReferenceLine x="0" stroke="#64748b" strokeDasharray="4 4" />
-                                        <Bar dataKey="count" name="จำนวน" radius={[6, 6, 0, 0]}
-                                            fill={C.indigo}
-                                            label={{ position: 'top', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
-                                        />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                                <ChartTitle title="การกระจาย Δ ความสุข" sub="Distribution across matched sessions (positive = happiness increased)" />
+                                {!d.hasHistogramData ? (
+                                    <EmptyHistogram label="ต้องการข้อมูล Pre+Post ที่ match sessionId เดียวกัน" />
+                                ) : (
+                                    <ResponsiveContainer width="100%" height={240}>
+                                        <BarChart data={d.happyBins} margin={{ top: 8 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                            <XAxis dataKey="bin" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                            <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                            <ReferenceLine x="0" stroke="#64748b" strokeDasharray="4 4" />
+                                            <Bar dataKey="count" name="จำนวน" radius={[6, 6, 0, 0]}
+                                                fill={C.indigo}
+                                                label={{ position: 'top', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                                            />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                )}
                             </div>
                         </div>
 
@@ -489,7 +501,7 @@ export default function AdminDashboard() {
                                         {[
                                             { name: 'ความเครียด', pre: +d.preAvg.stress || 0, post: +d.postAvg.stress || 0, lowerBetter: true },
                                             { name: 'ความสุข', pre: +d.preAvg.happiness || 0, post: +d.postAvg.happiness || 0, lowerBetter: false },
-                                            { name: 'พลังงาน', pre: +d.preAvg.energy || 0, post: +d.postAvg.energy || 0, lowerBetter: false },
+                                            { name: 'ความตื่นตัว', pre: +d.preAvg.energy || 0, post: +d.postAvg.energy || 0, lowerBetter: false },
                                             { name: 'ความสนุก (post)', pre: 0, post: +d.postAvg.fun || 0, lowerBetter: false },
                                             { name: 'ความพึงพอใจ (post)', pre: 0, post: +d.postAvg.satisfaction || 0, lowerBetter: false },
                                             { name: 'ความท้าทาย (post)', pre: 0, post: +d.postAvg.difficulty || 0, lowerBetter: false },
@@ -716,7 +728,8 @@ function ResearchCard({
     pre: number; post: number; lowerBetter?: boolean;
 }) {
     const isGood = lowerBetter ? avgDelta <= 0 : avgDelta >= 0;
-    const rate = total > 0 ? ((improved / total) * 100).toFixed(1) : '0.0';
+    const hasMatchedRows = improved !== -1;  // -1 = fallback mode, no matched pairs
+    const rate = hasMatchedRows && total > 0 ? ((improved / total) * 100).toFixed(1) : null;
     const dp = pre > 0 ? deltaPct(post, pre) : 0;
 
     return (
@@ -736,7 +749,7 @@ function ResearchCard({
                 <div>
                     <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2 }}>% เปลี่ยนแปลง</div>
                     <div style={{ fontSize: 28, fontWeight: 900, color: isGood ? C.emerald : C.red }}>
-                        {sign(dp)}{dp.toFixed(1)}%
+                        {pre > 0 ? `${sign(dp)}${dp.toFixed(1)}%` : '—'}
                     </div>
                 </div>
                 <div>
@@ -749,10 +762,26 @@ function ResearchCard({
                 </div>
             </div>
             <div style={{ marginTop: 14, padding: '10px 14px', background: isGood ? `${C.emerald}15` : `${C.red}15`, borderRadius: 12, border: `1px solid ${isGood ? C.emerald : C.red}30` }}>
-                <span style={{ fontWeight: 800, color: isGood ? C.emerald : C.red, fontSize: 13 }}>
-                    {improved}/{total} คน ({rate}%) {label}
-                </span>
+                {hasMatchedRows && rate !== null ? (
+                    <span style={{ fontWeight: 800, color: isGood ? C.emerald : C.red, fontSize: 13 }}>
+                        {improved}/{total} คน ({rate}%) {label}
+                    </span>
+                ) : (
+                    <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>
+                        ⚠ ใช้ค่าเฉลี่ยรวม (ยังไม่มีคู่ Pre+Post ที่ตรงกัน)
+                    </span>
+                )}
             </div>
+        </div>
+    );
+}
+
+function EmptyHistogram({ label }: { label: string }) {
+    return (
+        <div style={{ height: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#475569' }}>
+            <div style={{ fontSize: 32, opacity: 0.4 }}>📊</div>
+            <div style={{ fontSize: 12, fontWeight: 700, textAlign: 'center', maxWidth: 220 }}>ยังไม่มีข้อมูล matched pairs</div>
+            <div style={{ fontSize: 11, color: '#334155', fontWeight: 600, textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>{label}</div>
         </div>
     );
 }
