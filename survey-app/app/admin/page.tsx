@@ -1,458 +1,758 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
-    RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
+    PieChart, Pie, Cell, AreaChart, Area, RadarChart, PolarGrid,
+    PolarAngleAxis, PolarRadiusAxis, Radar, ScatterChart, Scatter, ZAxis,
+    ReferenceLine
 } from 'recharts';
-import {
-    Users, FileText, Activity, TrendingUp, BarChart3, Clock,
-    AlertCircle, Gamepad2, Brain, Heart, Zap, Award
-} from 'lucide-react';
-import { Stats } from '@/lib/types';
-import { GAS_WEBAPP_URL, GasStatsResponse } from '@/lib/api-config';
+import { GAS_WEBAPP_URL, GasStatsResponse, GasSurveyChangesResponse, SurveyChange } from '@/lib/api-config';
 
+// ─── Colour tokens ────────────────────────────────────────────────────────────
+const C = {
+    indigo: '#6366f1', purple: '#a855f7', rose: '#f43f5e',
+    amber: '#f59e0b', emerald: '#10b981', sky: '#0ea5e9',
+    slate: '#64748b', red: '#ef4444',
+};
+const PIE_COLORS = [C.indigo, C.purple, C.rose, C.amber, C.emerald];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const pct = (v: number, max = 10) => ((v / max) * 100).toFixed(1);
+const delta = (post: number, pre: number) => post - pre;
+const deltaPct = (post: number, pre: number) =>
+    pre === 0 ? 0 : (((post - pre) / pre) * 100);
+const sign = (n: number) => (n > 0 ? '+' : '');
+const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
+
+function avg(arr: number[]): number {
+    if (!arr.length) return 0;
+    return arr.reduce((s, v) => s + v, 0) / arr.length;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface DashData {
+    stats: any;
+    changes: SurveyChange[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
-    const [stats, setStats] = useState<any | null>(null);
+    const [data, setData] = useState<DashData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [tab, setTab] = useState<'overview' | 'comparison' | 'players' | 'trends'>('overview');
+    const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-    useEffect(() => {
-        fetch(`${GAS_WEBAPP_URL}?action=getStats`)
-            .then(res => res.json())
-            .then((data: GasStatsResponse) => {
-                if (!data.success) throw new Error("API error");
+    const load = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const [statsRes, changesRes] = await Promise.all([
+                fetch(`${GAS_WEBAPP_URL}?action=getStats`),
+                fetch(`${GAS_WEBAPP_URL}?action=getSurveyChanges`),
+            ]);
+            const statsJson: GasStatsResponse = await statsRes.json();
+            const changesJson: GasSurveyChangesResponse = await changesRes.json();
+            if (!statsJson.success) throw new Error('Stats API failed');
+            setData({ stats: statsJson.statistics, changes: changesJson.changes || [] });
+            setLastRefresh(new Date());
+        } catch (e: any) {
+            setError(e.message || 'Connection failed');
+        } finally {
+            setLoading(false);
+        }
+    };
 
-                const gs = data.statistics;
-                // Transform GAS data for our charts
-                const transformedStats = {
-                    ...gs,
-                    comparisonData: [
-                        { subject: 'ความเครียด', pre: parseFloat(gs.averageScores.preGame?.stress || '0'), post: parseFloat(gs.averageScores.postGame?.stress || '0') },
-                        { subject: 'ความสุข', pre: parseFloat(gs.averageScores.preGame?.happiness || '0'), post: parseFloat(gs.averageScores.postGame?.happiness || '0') },
-                        { subject: 'พลังงาน', pre: parseFloat(gs.averageScores.preGame?.energy || '0'), post: parseFloat(gs.averageScores.postGame?.energy || '0') },
-                    ],
-                    experienceData: [
-                        { subject: 'ความสนุก', value: parseFloat(gs.averageScores.postGame?.fun || '0') },
-                        { subject: 'ความพึงพอใจ', value: parseFloat(gs.averageScores.postGame?.satisfaction || '0') },
-                        { subject: 'ความท้าทาย', value: parseFloat(gs.averageScores.postGame?.difficulty || '0') },
-                    ],
-                    ageData: Object.keys(gs.demographics.ageGroups).map(key => ({
-                        name: key,
-                        value: gs.demographics.ageGroups[key]
-                    })).filter(d => d.value > 0),
-                    expPerfData: gs.experiencePerformance.map(d => ({
-                        name: d.name,
-                        score: parseInt(d.score)
-                    })),
-                    timelineData: gs.dailyTrends.map(d => ({
-                        date: d.date.split('-').slice(1).join('/'), // View as MM/DD
-                        score: parseInt(d.avgScore),
-                        happy: parseFloat(d.avgHappiness)
-                    }))
-                };
-                setStats(transformedStats);
-                setLoading(false);
-            })
-            .catch(err => {
-                setError("ไม่สามารถโหลดข้อมูลจาก Google Sheets ได้");
-                setLoading(false);
-            });
-    }, []);
+    useEffect(() => { load(); }, []);
 
+    // ── Derived data ──────────────────────────────────────────────────────────
+    const derived = useMemo(() => {
+        if (!data) return null;
+        const { stats, changes } = data;
+        const gs = stats;
+
+        // Pre/Post averages
+        const preAvg = gs.averageScores?.preGame ?? {};
+        const postAvg = gs.averageScores?.postGame ?? {};
+
+        // Comparison bars (before vs after averaged)
+        const comparisonData = [
+            { metric: 'ความเครียด', pre: +preAvg.stress || 0, post: +postAvg.stress || 0, lower_is_better: true },
+            { metric: 'ความสุข', pre: +preAvg.happiness || 0, post: +postAvg.happiness || 0, lower_is_better: false },
+            { metric: 'พลังงาน', pre: +preAvg.energy || 0, post: +postAvg.energy || 0, lower_is_better: false },
+        ].map(d => ({
+            ...d,
+            delta: delta(d.post, d.pre),
+            deltaPct: deltaPct(d.post, d.pre),
+            prePct: +pct(d.pre),
+            postPct: +pct(d.post),
+        }));
+
+        // Post-game experience radar
+        const experienceData = [
+            { subject: 'ความสนุก', value: +postAvg.fun || 0 },
+            { subject: 'ความพึงพอใจ', value: +postAvg.satisfaction || 0 },
+            { subject: 'ความท้าทาย', value: +postAvg.difficulty || 0 },
+            { subject: 'ความสุข', value: +postAvg.happiness || 0 },
+            { subject: 'พลังงาน', value: +postAvg.energy || 0 },
+        ];
+
+        // Per-player delta table from getSurveyChanges
+        const playerRows = changes.map(c => ({
+            id: c.sessionId,
+            pid: c.playerId,
+            pre_stress: c.pre.stress, post_stress: c.post.stress,
+            pre_happy: c.pre.happiness, post_happy: c.post.happiness,
+            pre_energy: c.pre.energy, post_energy: c.post.energy,
+            d_stress: c.delta.stress,
+            d_happy: c.delta.happiness,
+            d_energy: c.delta.energy,
+            fun: c.post.fun, satisfaction: c.post.satisfaction, difficulty: c.post.difficulty,
+        }));
+
+        // Delta distribution for scatter/bar
+        const deltaDistStress = changes.map(c => c.delta.stress);
+        const deltaDistHappy = changes.map(c => c.delta.happiness);
+        const deltaDistEnergy = changes.map(c => c.delta.energy);
+
+        // Summary stats
+        const n = changes.length;
+        const avgDeltaStress = avg(deltaDistStress);
+        const avgDeltaHappy = avg(deltaDistHappy);
+        const avgDeltaEnergy = avg(deltaDistEnergy);
+        const improvedHappy = changes.filter(c => c.delta.happiness > 0).length;
+        const reducedStress = changes.filter(c => c.delta.stress < 0).length;
+        const improvedEnergy = changes.filter(c => c.delta.energy > 0).length;
+
+        // Histogram bins for delta stress (-5 to +5)
+        const bins = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
+        const stressBins = bins.map(b => ({
+            bin: `${sign(b)}${b}`, count: deltaDistStress.filter(v => Math.round(v) === b).length
+        }));
+        const happyBins = bins.map(b => ({
+            bin: `${sign(b)}${b}`, count: deltaDistHappy.filter(v => Math.round(v) === b).length
+        }));
+
+        // Age pie
+        const ageData = Object.entries(gs.demographics?.ageGroups ?? {})
+            .map(([name, value]) => ({ name, value: value as number }))
+            .filter(d => (d.value as number) > 0);
+
+        // Gender pie
+        const genderData = Object.entries(gs.demographics?.gender ?? {})
+            .map(([name, value]) => ({ name, value: value as number }))
+            .filter(d => (d.value as number) > 0);
+
+        // Timeline
+        const timelineData = (gs.dailyTrends ?? []).map((d: any) => ({
+            date: d.date.split('-').slice(1).join('/'),
+            score: parseInt(d.avgScore),
+            happy: parseFloat(d.avgHappiness),
+            sessions: d.sessions,
+        }));
+
+        // Exp perf
+        const expPerfData = (gs.experiencePerformance ?? []).map((d: any) => ({
+            name: d.name, score: parseInt(d.score)
+        }));
+
+        // Recent emotional (post 20)
+        const recentEmotional = gs.recentEmotionalComparison ?? [];
+
+        return {
+            comparisonData, experienceData, playerRows,
+            avgDeltaStress, avgDeltaHappy, avgDeltaEnergy,
+            improvedHappy, reducedStress, improvedEnergy, n,
+            stressBins, happyBins,
+            ageData, genderData, timelineData, expPerfData, recentEmotional,
+            preAvg, postAvg,
+        };
+    }, [data]);
+
+    // ── Render states ──────────────────────────────────────────────────────────
     if (loading) return (
-        <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
-            <div className="flex flex-col items-center gap-6">
-                <div className="relative">
-                    <div className="w-20 h-20 border-4 border-indigo-100 rounded-full" />
-                    <div className="absolute top-0 w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                </div>
-                <div className="text-center">
-                    <p className="text-xl font-bold text-slate-800 animate-pulse">กำลังจัดเตรียมข้อมูลแผงควบคุม...</p>
-                    <p className="text-slate-400 text-sm mt-1 uppercase tracking-widest font-semibold text-pretty">Shoot till Dawn Analytics</p>
-                </div>
-            </div>
+        <div style={{ minHeight: '100vh', background: '#0f0f1a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20 }}>
+            <div style={{ width: 64, height: 64, border: '4px solid #6366f133', borderTop: '4px solid #6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            <p style={{ color: '#a5b4fc', fontWeight: 700, letterSpacing: 4, fontSize: 13, textTransform: 'uppercase' }}>กำลังโหลดข้อมูลวิจัย...</p>
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
     );
 
-    if (error || !stats) return (
-        <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
-            <div className="bg-white p-12 rounded-[40px] shadow-2xl shadow-indigo-100 flex flex-col items-center text-center gap-6 border border-white">
-                <div className="p-6 bg-red-50 rounded-full">
-                    <AlertCircle className="w-16 h-16 text-red-500" />
-                </div>
-                <div>
-                    <h2 className="text-3xl font-black text-slate-800 mb-2">เกิดข้อผิดพลาดในการเชื่อมต่อ</h2>
-                    <p className="text-slate-500 max-w-xs mx-auto">{error || "ไม่พบข้อมูลที่ต้องการในขณะนี้"}</p>
-                </div>
-                <button
-                    onClick={() => window.location.reload()}
-                    className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all hover:shadow-lg hover:shadow-indigo-200"
-                >
-                    ลองใหม่อีกครั้ง
-                </button>
-            </div>
+    if (error || !data || !derived) return (
+        <div style={{ minHeight: '100vh', background: '#0f0f1a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+            <p style={{ color: '#f87171', fontSize: 18, fontWeight: 700 }}>⚠ {error || 'ไม่พบข้อมูล'}</p>
+            <button onClick={load} style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 28px', fontWeight: 700, cursor: 'pointer' }}>ลองใหม่</button>
         </div>
     );
 
-    const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f43f5e', '#10b981'];
+    const d = derived;
+    const tabs = [
+        { id: 'overview', label: '📊 ภาพรวม' },
+        { id: 'comparison', label: '⚖️ ก่อน/หลัง' },
+        { id: 'players', label: '👥 รายบุคคล' },
+        { id: 'trends', label: '📈 แนวโน้ม' },
+    ] as const;
 
     return (
-        <div className="min-h-screen bg-[#f8fafc] text-slate-900 selection:bg-indigo-100 pb-20">
-            {/* Top Navigation / Header */}
-            <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4 mb-8">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200">
-                            <Gamepad2 className="w-6 h-6" />
-                        </div>
+        <div style={{ minHeight: '100vh', background: '#0f0f1a', color: '#f1f5f9', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
+            <style>{`
+                * { box-sizing: border-box; }
+                @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+                .card { background: #1a1a2e; border: 1px solid #2d2d4e; border-radius: 20px; padding: 24px; animation: fadeUp 0.4s ease both; }
+                .chip-pos { background:#10b98120; color:#34d399; border:1px solid #10b98140; border-radius:8px; padding:2px 8px; font-size:11px; font-weight:800; }
+                .chip-neg { background:#ef444420; color:#f87171; border:1px solid #ef444440; border-radius:8px; padding:2px 8px; font-size:11px; font-weight:800; }
+                .chip-neu { background:#6366f120; color:#a5b4fc; border:1px solid #6366f140; border-radius:8px; padding:2px 8px; font-size:11px; font-weight:800; }
+                .tab-btn { border:none; background:transparent; color:#64748b; font-weight:700; font-size:13px; padding:10px 20px; cursor:pointer; border-radius:12px; transition:all 0.2s; }
+                .tab-btn.active { background:#6366f1; color:#fff; }
+                .tab-btn:hover:not(.active) { background:#1e1e3a; color:#a5b4fc; }
+                .scrolltable { overflow-x:auto; }
+                table { width:100%; border-collapse:collapse; font-size:12px; }
+                th { background:#16162a; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; padding:10px 12px; text-align:left; }
+                td { padding:9px 12px; border-bottom:1px solid #1e1e3a; font-weight:500; }
+                tr:hover td { background:#1e1e3a; }
+                .metric-bar-bg { background:#1e1e3a; border-radius:999px; height:8px; margin-top:4px; overflow:hidden; }
+                .metric-bar-fill { height:100%; border-radius:999px; }
+                @media(max-width:768px){.grid-2{grid-template-columns:1fr!important;}.grid-4{grid-template-columns:1fr 1fr!important;}}
+            `}</style>
+
+            {/* ── NAV ── */}
+            <nav style={{ background: '#0a0a15', borderBottom: '1px solid #1e1e3a', padding: '0 24px', position: 'sticky', top: 0, zIndex: 50 }}>
+                <div style={{ maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ background: 'linear-gradient(135deg,#6366f1,#a855f7)', borderRadius: 12, padding: '8px 12px', fontSize: 20 }}>🎮</div>
                         <div>
-                            <h1 className="text-xl font-black text-slate-800 tracking-tight leading-none">ADMIN DASHBOARD</h1>
-                            <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em] mt-1">Shoot till Dawn • Analytics v2</p>
+                            <div style={{ fontWeight: 900, fontSize: 16, letterSpacing: 2, textTransform: 'uppercase' }}>Research Dashboard</div>
+                            <div style={{ color: '#6366f1', fontSize: 10, fontWeight: 700, letterSpacing: 3, textTransform: 'uppercase' }}>Shoot Till Dawn • Analytics v3</div>
                         </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {tabs.map(t => (
+                            <button key={t.id} className={`tab-btn${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id as any)}>{t.label}</button>
+                        ))}
+                        <button onClick={load} style={{ background: '#1e1e3a', border: '1px solid #2d2d4e', color: '#a5b4fc', borderRadius: 12, padding: '8px 16px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>⟳ Refresh</button>
                     </div>
                 </div>
             </nav>
 
-            <main className="max-w-7xl mx-auto px-6">
-                {/* Stats Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                    <StatCard
-                        label="ผู้เล่นทั้งหมด"
-                        value={stats.totalPlayers}
-                        subLabel="ลงทะเบียนแล้ว"
-                        icon={<Users className="w-6 h-6" />}
-                        trend="Real-time"
-                        color="indigo"
-                    />
-                    <StatCard
-                        label="การเข้าเล่น"
-                        value={stats.totalSessions}
-                        subLabel="Sessions ทั้งหมด"
-                        icon={<Activity className="w-6 h-6" />}
-                        trend="Total"
-                        color="purple"
-                    />
-                    <StatCard
-                        label="แบบสำรวจ"
-                        value={stats.completedSurveys}
-                        subLabel="Completed surveys"
-                        icon={<FileText className="w-6 h-6" />}
-                        trend="Latest"
-                        color="rose"
-                    />
-                    <StatCard
-                        label="คะแนนเฉลี่ย"
-                        value={stats.averageScore || 0}
-                        subLabel="จากทุก Session"
-                        icon={<Award className="w-6 h-6" />}
-                        trend="Global"
-                        color="emerald"
-                    />
-                </div>
+            <main style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 24px 80px' }}>
 
-                {/* Charts Layout */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* ══════════════════════════════════════════════════════ OVERVIEW */}
+                {tab === 'overview' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-                    {/* Emotional Delta Comparison */}
-                    <ChartContainer title="ระดับอารมณ์: ก่อน vs หลังเล่นเกม" subtitle="เปรียบเทียบค่าเฉลี่ยความรู้สึกในด้านต่างๆ" className="lg:col-span-8">
-                        <div className="h-[350px] w-full mt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stats.comparisonData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis
-                                        dataKey="subject"
-                                        stroke="#94a3b8"
-                                        fontSize={13}
-                                        fontWeight={600}
-                                        tickLine={false}
-                                        axisLine={false}
-                                        dy={10}
-                                    />
-                                    <YAxis
-                                        stroke="#94a3b8"
-                                        fontSize={12}
-                                        tickLine={false}
-                                        axisLine={false}
-                                        domain={[0, 10]}
-                                    />
-                                    <Tooltip
-                                        cursor={{ fill: '#f8fafc' }}
-                                        content={({ active, payload }) => {
-                                            if (active && payload && payload.length) {
-                                                return (
-                                                    <div className="bg-white p-4 shadow-2xl rounded-2xl border border-slate-50 min-w-[150px]">
-                                                        <p className="font-bold text-slate-800 mb-2 border-b pb-2">{payload[0].payload.subject}</p>
-                                                        {payload.map((entry: any, i) => (
-                                                            <div key={i} className="flex items-center justify-between gap-4 mt-1">
-                                                                <span className="text-xs font-bold text-slate-400 uppercase">{entry.name}:</span>
-                                                                <span className="text-sm font-black" style={{ color: entry.fill }}>{entry.value}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        }}
-                                    />
-                                    <Legend
-                                        verticalAlign="top"
-                                        align="right"
-                                        iconType="circle"
-                                        wrapperStyle={{ paddingBottom: '30px', fontWeight: 'bold', fontSize: '12px' }}
-                                    />
-                                    <Bar dataKey="pre" name="ก่อนเล่น" fill="#6366f1" radius={[8, 8, 0, 0]} barSize={40} />
-                                    <Bar dataKey="post" name="หลังเล่น" fill="#a855f7" radius={[8, 8, 0, 0]} barSize={40} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </ChartContainer>
-
-                    {/* Radar Chart for Experience */}
-                    <ChartContainer title="สถิติประสบการณ์" subtitle="ความรู้สึกหลังเล่นเกม" className="lg:col-span-4">
-                        <div className="h-[350px] w-full flex items-center justify-center">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={stats.experienceData}>
-                                    <PolarGrid stroke="#e2e8f0" />
-                                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }} />
-                                    <PolarRadiusAxis angle={30} domain={[0, 10]} tick={false} axisLine={false} />
-                                    <Radar
-                                        name="Level"
-                                        dataKey="value"
-                                        stroke="#6366f1"
-                                        strokeWidth={3}
-                                        fill="#6366f1"
-                                        fillOpacity={0.4}
-                                    />
-                                </RadarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </ChartContainer>
-
-                    {/* Age Demographics */}
-                    <ChartContainer title="กลุ่มผู้เล่นตามช่วงอายุ" subtitle="จำนวนผู้เล่นแยกตามกลุ่มอายุ" className="lg:col-span-4">
-                        <div className="h-[300px] w-full mt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={stats.ageData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={100}
-                                        fill="#8884d8"
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        {stats.ageData.map((entry: any, index: number) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip />
-                                    <Legend verticalAlign="bottom" height={36} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </ChartContainer>
-
-                    {/* Experience Performance */}
-                    <ChartContainer title="คะแนนตามประสบการณ์" subtitle="คะแนนเฉลี่ยแยกตามระดับทักษะ" className="lg:col-span-8">
-                        <div className="h-[300px] w-full mt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart layout="vertical" data={stats.expPerfData} margin={{ left: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                                    <XAxis type="number" hide />
-                                    <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 12, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                                    <Tooltip
-                                        cursor={{ fill: 'transparent' }}
-                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Bar dataKey="score" fill="#6366f1" radius={[0, 10, 10, 0]} barSize={30} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </ChartContainer>
-
-                    {/* Timeline Analysis - Integrated with real data */}
-                    <ChartContainer title="แนวโน้มความสุขและคะแนนสุทธิ" subtitle="ความสุขที่เปลี่ยนไปและคะแนนเฉลี่ยรายวัน" className="lg:col-span-8">
-                        <div className="h-[350px] w-full mt-6">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={stats.timelineData}>
-                                    <defs>
-                                        <linearGradient id="colorHappy" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
-                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                                        </linearGradient>
-                                        <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} fontWeight={600} tickLine={false} axisLine={false} dy={10} />
-                                    <YAxis yAxisId="left" stroke="#6366f1" fontSize={11} tickLine={false} axisLine={false} domain={[0, 10]} />
-                                    <YAxis yAxisId="right" orientation="right" stroke="#10b981" fontSize={11} tickLine={false} axisLine={false} />
-                                    <Tooltip
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
-                                    <Area
-                                        yAxisId="left"
-                                        type="monotone"
-                                        dataKey="happy"
-                                        name="ความสุขเฉลี่ย (1-10)"
-                                        stroke="#6366f1"
-                                        strokeWidth={4}
-                                        fillOpacity={1}
-                                        fill="url(#colorHappy)"
-                                    />
-                                    <Area
-                                        yAxisId="right"
-                                        type="monotone"
-                                        dataKey="score"
-                                        name="คะแนนเฉลี่ย"
-                                        stroke="#10b981"
-                                        strokeWidth={4}
-                                        fillOpacity={1}
-                                        fill="url(#colorScore)"
-                                    />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </ChartContainer>
-
-                    {/* Recent Feedback Feed */}
-                    <ChartContainer title="ความคิดเห็นล่าสุด" subtitle="ฟีดข้อมูลจากผู้เล่น 5 อันดับล่าสุด" className="lg:col-span-4">
-                        <div className="flex flex-col gap-4 mt-6 h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-                            {stats.recentFeedback?.map((fb: any, i: number) => (
-                                <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-white transition-all hover:bg-white hover:shadow-md group">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{fb.player}</span>
-                                        <span className="text-[10px] font-bold text-slate-400">{fb.date}</span>
-                                    </div>
-                                    <p className="text-sm text-slate-600 font-medium leading-relaxed group-hover:text-slate-900 transition-colors">"{fb.comment}"</p>
+                        {/* KPI row */}
+                        <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+                            {[
+                                { label: 'ผู้เล่นทั้งหมด', value: data.stats.totalPlayers, icon: '👤', color: C.indigo, sub: 'ลงทะเบียน' },
+                                { label: 'Session', value: data.stats.totalSessions, icon: '🎮', color: C.purple, sub: 'ทั้งหมด' },
+                                { label: 'แบบสำรวจครบ', value: data.stats.completedSurveys, icon: '📋', color: C.emerald, sub: 'Pre+Post' },
+                                { label: 'คะแนนเฉลี่ย', value: data.stats.averageScore || 0, icon: '⭐', color: C.amber, sub: 'ทุก Session' },
+                            ].map((k, i) => (
+                                <div key={i} className="card" style={{ animationDelay: `${i * 0.05}s` }}>
+                                    <div style={{ fontSize: 28, marginBottom: 8 }}>{k.icon}</div>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 2 }}>{k.label}</div>
+                                    <div style={{ fontSize: 36, fontWeight: 900, color: k.color, lineHeight: 1.1, margin: '6px 0 4px' }}>{k.value}</div>
+                                    <div style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{k.sub}</div>
                                 </div>
                             ))}
-                            {(!stats.recentFeedback || stats.recentFeedback.length === 0) && (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-                                    <Clock className="w-8 h-8 opacity-20" />
-                                    <p className="text-xs font-bold uppercase tracking-widest">ยังไม่มีความคิดเห็น</p>
+                        </div>
+
+                        {/* Research Summary Cards */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }} className="grid-2">
+                            <ResearchCard
+                                title="ผลการวิจัย: ความเครียด"
+                                icon="🧠" color={C.red}
+                                avgDelta={d.avgDeltaStress}
+                                improved={d.reducedStress} total={d.n}
+                                label="ลดลง"
+                                pre={+d.preAvg.stress || 0} post={+d.postAvg.stress || 0}
+                                lowerBetter
+                            />
+                            <ResearchCard
+                                title="ผลการวิจัย: ความสุข"
+                                icon="😊" color={C.indigo}
+                                avgDelta={d.avgDeltaHappy}
+                                improved={d.improvedHappy} total={d.n}
+                                label="เพิ่มขึ้น"
+                                pre={+d.preAvg.happiness || 0} post={+d.postAvg.happiness || 0}
+                            />
+                            <ResearchCard
+                                title="ผลการวิจัย: พลังงาน"
+                                icon="⚡" color={C.emerald}
+                                avgDelta={d.avgDeltaEnergy}
+                                improved={d.improvedEnergy} total={d.n}
+                                label="เพิ่มขึ้น"
+                                pre={+d.preAvg.energy || 0} post={+d.postAvg.energy || 0}
+                            />
+                        </div>
+
+                        {/* Demographics row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }} className="grid-2">
+                            <div className="card">
+                                <ChartTitle title="กลุ่มอายุ" sub="Demographics" />
+                                <ResponsiveContainer width="100%" height={220}>
+                                    <PieChart>
+                                        <Pie data={d.ageData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={4} dataKey="value">
+                                            {d.ageData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % 5]} />)}
+                                        </Pie>
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                        <Legend iconType="circle" wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="card">
+                                <ChartTitle title="เพศ" sub="Demographics" />
+                                <ResponsiveContainer width="100%" height={220}>
+                                    <PieChart>
+                                        <Pie data={d.genderData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={4} dataKey="value">
+                                            {d.genderData.map((_: any, i: number) => <Cell key={i} fill={PIE_COLORS[i % 5]} />)}
+                                        </Pie>
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                        <Legend iconType="circle" wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="card">
+                                <ChartTitle title="ประสบการณ์เกม" sub="Avg score by skill" />
+                                <ResponsiveContainer width="100%" height={220}>
+                                    <BarChart layout="vertical" data={d.expPerfData} margin={{ left: 10 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#2d2d4e" />
+                                        <XAxis type="number" hide />
+                                        <YAxis dataKey="name" type="category" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12 }} />
+                                        <Bar dataKey="score" fill={C.indigo} radius={[0, 8, 8, 0]} barSize={22} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Radar post-game */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }} className="grid-2">
+                            <div className="card">
+                                <ChartTitle title="ประสบการณ์หลังเล่น" sub="Post-game experience radar" />
+                                <ResponsiveContainer width="100%" height={280}>
+                                    <RadarChart cx="50%" cy="50%" outerRadius="75%" data={d.experienceData}>
+                                        <PolarGrid stroke="#2d2d4e" />
+                                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
+                                        <PolarRadiusAxis angle={30} domain={[0, 10]} tick={false} axisLine={false} />
+                                        <Radar name="ค่าเฉลี่ย" dataKey="value" stroke={C.indigo} fill={C.indigo} fillOpacity={0.35} strokeWidth={2} />
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12 }} />
+                                    </RadarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="card">
+                                <ChartTitle title="อารมณ์หลังเล่น 20 คนล่าสุด" sub="Stress / Happiness / Energy per session" />
+                                <ResponsiveContainer width="100%" height={280}>
+                                    <BarChart data={d.recentEmotional} margin={{ top: 4, right: 16, left: 0, bottom: 60 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                        <XAxis dataKey="name" angle={-40} textAnchor="end" tick={{ fill: '#64748b', fontSize: 9, fontWeight: 700 }} axisLine={false} tickLine={false} interval={0} height={90} />
+                                        <YAxis domain={[0, 10]} tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                        <Legend wrapperStyle={{ fontSize: 11, fontWeight: 700, paddingBottom: 8 }} />
+                                        <Bar dataKey="stress" name="ความเครียด" fill={C.red} radius={[4, 4, 0, 0]} barSize={8} />
+                                        <Bar dataKey="happiness" name="ความสุข" fill={C.indigo} radius={[4, 4, 0, 0]} barSize={8} />
+                                        <Bar dataKey="energy" name="พลังงาน" fill={C.emerald} radius={[4, 4, 0, 0]} barSize={8} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Recent feedback */}
+                        <div className="card">
+                            <ChartTitle title="ความคิดเห็นล่าสุด" sub="Recent player feedback" />
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12, marginTop: 16 }}>
+                                {(data.stats.recentFeedback || []).map((fb: any, i: number) => (
+                                    <div key={i} style={{ background: '#16162a', border: '1px solid #2d2d4e', borderRadius: 14, padding: 16 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                            <span style={{ fontSize: 10, fontWeight: 800, color: C.indigo, textTransform: 'uppercase', letterSpacing: 2 }}>{fb.player}</span>
+                                            <span style={{ fontSize: 10, color: '#475569', fontWeight: 600 }}>{fb.date}</span>
+                                        </div>
+                                        <p style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6, margin: 0 }}>"{fb.comment}"</p>
+                                    </div>
+                                ))}
+                                {(!data.stats.recentFeedback || data.stats.recentFeedback.length === 0) && (
+                                    <p style={{ color: '#475569', fontSize: 13 }}>ยังไม่มีความคิดเห็น</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ══════════════════════════════════════════════════ COMPARISON */}
+                {tab === 'comparison' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+                        {/* Big comparison chart */}
+                        <div className="card">
+                            <ChartTitle title="ระดับอารมณ์: ก่อน vs หลังเล่นเกม" sub="Average scores across all sessions (scale 1-10)" />
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, margin: '20px 0' }}>
+                                {d.comparisonData.map((m, i) => {
+                                    const improved = m.lower_is_better ? m.delta < 0 : m.delta > 0;
+                                    return (
+                                        <div key={i} style={{ background: '#16162a', border: '1px solid #2d2d4e', borderRadius: 16, padding: 20 }}>
+                                            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 12 }}>{m.metric}</div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>ก่อนเล่น</span>
+                                                <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>หลังเล่น</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                                                <span style={{ fontSize: 28, fontWeight: 900, color: '#94a3b8' }}>{m.pre.toFixed(2)}</span>
+                                                <span style={{ fontSize: 11, fontWeight: 800, color: improved ? C.emerald : C.red }}>
+                                                    {sign(m.delta)}{m.delta.toFixed(2)} ({sign(m.deltaPct)}{m.deltaPct.toFixed(1)}%)
+                                                </span>
+                                                <span style={{ fontSize: 28, fontWeight: 900, color: improved ? C.emerald : C.red }}>{m.post.toFixed(2)}</span>
+                                            </div>
+                                            {/* PRE bar */}
+                                            <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, marginBottom: 3 }}>ก่อน: {m.prePct}%</div>
+                                            <div className="metric-bar-bg"><div className="metric-bar-fill" style={{ width: `${m.prePct}%`, background: '#475569' }} /></div>
+                                            {/* POST bar */}
+                                            <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, margin: '6px 0 3px' }}>หลัง: {m.postPct}%</div>
+                                            <div className="metric-bar-bg"><div className="metric-bar-fill" style={{ width: `${m.postPct}%`, background: improved ? C.emerald : C.rose }} /></div>
+                                            <div style={{ marginTop: 10, textAlign: 'center' }}>
+                                                <span className={improved ? 'chip-pos' : 'chip-neg'}>{improved ? '✓ ดีขึ้น' : '✗ แย่ลง'}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <ResponsiveContainer width="100%" height={320}>
+                                <BarChart data={d.comparisonData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                    <XAxis dataKey="metric" tick={{ fill: '#94a3b8', fontSize: 13, fontWeight: 700 }} axisLine={false} tickLine={false} />
+                                    <YAxis domain={[0, 10]} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                    <Tooltip
+                                        contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 16, color: '#f1f5f9' }}
+                                        formatter={(v: any, name?: any) => [`${Number(v).toFixed(2)} / 10  (${pct(Number(v))}%)`, name] as any}
+                                    />
+                                    <Legend wrapperStyle={{ fontSize: 12, fontWeight: 700 }} />
+                                    <Bar dataKey="pre" name="ก่อนเล่น" fill="#475569" radius={[8, 8, 0, 0]} barSize={48} />
+                                    <Bar dataKey="post" name="หลังเล่น" fill={C.indigo} radius={[8, 8, 0, 0]} barSize={48} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        {/* Delta histogram */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="grid-2">
+                            <div className="card">
+                                <ChartTitle title="การกระจายความเปลี่ยนแปลง: ความเครียด" sub="Distribution of Δ stress (negative = reduced)" />
+                                <ResponsiveContainer width="100%" height={240}>
+                                    <BarChart data={d.stressBins} margin={{ top: 8 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                        <XAxis dataKey="bin" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                        <ReferenceLine x="0" stroke="#64748b" strokeDasharray="4 4" />
+                                        <Bar dataKey="count" name="จำนวน" radius={[6, 6, 0, 0]}
+                                            fill={C.red}
+                                            label={{ position: 'top', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                                        />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="card">
+                                <ChartTitle title="การกระจายความเปลี่ยนแปลง: ความสุข" sub="Distribution of Δ happiness (positive = improved)" />
+                                <ResponsiveContainer width="100%" height={240}>
+                                    <BarChart data={d.happyBins} margin={{ top: 8 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                        <XAxis dataKey="bin" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                        <ReferenceLine x="0" stroke="#64748b" strokeDasharray="4 4" />
+                                        <Bar dataKey="count" name="จำนวน" radius={[6, 6, 0, 0]}
+                                            fill={C.indigo}
+                                            label={{ position: 'top', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }}
+                                        />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Full metric table */}
+                        <div className="card">
+                            <ChartTitle title="ตารางเปรียบเทียบครบทุกตัวชี้วัด" sub="All pre-game vs post-game metrics with % change" />
+                            <div style={{ overflowX: 'auto', marginTop: 16 }}>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>ตัวชี้วัด</th>
+                                            <th>ก่อนเล่น (avg)</th>
+                                            <th>% (pre)</th>
+                                            <th>หลังเล่น (avg)</th>
+                                            <th>% (post)</th>
+                                            <th>Δ</th>
+                                            <th>Δ%</th>
+                                            <th>ผล</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {[
+                                            { name: 'ความเครียด', pre: +d.preAvg.stress || 0, post: +d.postAvg.stress || 0, lowerBetter: true },
+                                            { name: 'ความสุข', pre: +d.preAvg.happiness || 0, post: +d.postAvg.happiness || 0, lowerBetter: false },
+                                            { name: 'พลังงาน', pre: +d.preAvg.energy || 0, post: +d.postAvg.energy || 0, lowerBetter: false },
+                                            { name: 'ความสนุก (post)', pre: 0, post: +d.postAvg.fun || 0, lowerBetter: false },
+                                            { name: 'ความพึงพอใจ (post)', pre: 0, post: +d.postAvg.satisfaction || 0, lowerBetter: false },
+                                            { name: 'ความท้าทาย (post)', pre: 0, post: +d.postAvg.difficulty || 0, lowerBetter: false },
+                                        ].map((row, i) => {
+                                            const dv = delta(row.post, row.pre);
+                                            const dp = row.pre > 0 ? deltaPct(row.post, row.pre) : null;
+                                            const improved = row.lowerBetter ? dv < 0 : dv > 0;
+                                            return (
+                                                <tr key={i}>
+                                                    <td style={{ fontWeight: 700 }}>{row.name}</td>
+                                                    <td>{row.pre > 0 ? row.pre.toFixed(2) : '—'}</td>
+                                                    <td>{row.pre > 0 ? pct(row.pre) + '%' : '—'}</td>
+                                                    <td>{row.post.toFixed(2)}</td>
+                                                    <td>{pct(row.post)}%</td>
+                                                    <td style={{ color: row.pre > 0 ? (improved ? C.emerald : C.red) : '#64748b' }}>
+                                                        {row.pre > 0 ? `${sign(dv)}${dv.toFixed(2)}` : '—'}
+                                                    </td>
+                                                    <td style={{ color: dp != null ? (improved ? C.emerald : C.red) : '#64748b' }}>
+                                                        {dp != null ? `${sign(dp)}${dp.toFixed(1)}%` : '—'}
+                                                    </td>
+                                                    <td>
+                                                        {row.pre > 0
+                                                            ? <span className={improved ? 'chip-pos' : 'chip-neg'}>{improved ? '✓ ดีขึ้น' : '✗ แย่ลง'}</span>
+                                                            : <span className="chip-neu">Post only</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ════════════════════════════════════════════════════ PLAYERS */}
+                {tab === 'players' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                        <div className="card">
+                            <ChartTitle
+                                title="ข้อมูลรายบุคคล: ก่อน/หลังเล่น"
+                                sub={`${d.playerRows.length} sessions ที่มีทั้ง Pre และ Post survey`}
+                            />
+                            {d.playerRows.length === 0 ? (
+                                <p style={{ color: '#64748b', marginTop: 16 }}>ยังไม่มีข้อมูลที่มีทั้ง Pre และ Post survey</p>
+                            ) : (
+                                <div className="scrolltable" style={{ marginTop: 16 }}>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Player ID</th>
+                                                <th>Session</th>
+                                                <th>เครียด Pre</th><th>เครียด Post</th><th>Δ เครียด</th>
+                                                <th>สุข Pre</th><th>สุข Post</th><th>Δ สุข</th>
+                                                <th>พลัง Pre</th><th>พลัง Post</th><th>Δ พลัง</th>
+                                                <th>สนุก</th><th>พอใจ</th><th>ยาก</th>
+                                                <th>Outcome</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {d.playerRows.map((r, i) => {
+                                                const stressOk = r.d_stress <= 0;
+                                                const happyOk = r.d_happy >= 0;
+                                                const energyOk = r.d_energy >= 0;
+                                                const overall = [stressOk, happyOk, energyOk].filter(Boolean).length;
+                                                return (
+                                                    <tr key={i}>
+                                                        <td style={{ color: '#475569' }}>{i + 1}</td>
+                                                        <td style={{ fontFamily: 'monospace', fontSize: 11, color: '#a5b4fc' }}>{r.pid.slice(0, 8)}</td>
+                                                        <td style={{ fontFamily: 'monospace', fontSize: 10, color: '#475569' }}>{r.id.slice(0, 10)}</td>
+                                                        <td>{r.pre_stress}</td>
+                                                        <td>{r.post_stress}</td>
+                                                        <td style={{ color: r.d_stress <= 0 ? C.emerald : C.red, fontWeight: 800 }}>{sign(r.d_stress)}{r.d_stress}</td>
+                                                        <td>{r.pre_happy}</td>
+                                                        <td>{r.post_happy}</td>
+                                                        <td style={{ color: r.d_happy >= 0 ? C.emerald : C.red, fontWeight: 800 }}>{sign(r.d_happy)}{r.d_happy}</td>
+                                                        <td>{r.pre_energy}</td>
+                                                        <td>{r.post_energy}</td>
+                                                        <td style={{ color: r.d_energy >= 0 ? C.emerald : C.red, fontWeight: 800 }}>{sign(r.d_energy)}{r.d_energy}</td>
+                                                        <td>{r.fun}</td>
+                                                        <td>{r.satisfaction}</td>
+                                                        <td>{r.difficulty}</td>
+                                                        <td>
+                                                            <span className={overall >= 2 ? 'chip-pos' : overall === 1 ? 'chip-neu' : 'chip-neg'}>
+                                                                {overall}/3 ✓
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
                                 </div>
                             )}
                         </div>
-                    </ChartContainer>
 
-                    {/* Recent 20 Players Comparison Chart */}
-                    <ChartContainer title="เปรียบเทียบคะแนน 20 ผู้เล่นล่าสุด" subtitle="เปรียบเทียบผลงานผู้เล่นรายบุคคล 20 session ล่าสุด" className="lg:col-span-12">
-                        <div className="h-[400px] w-full mt-6">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stats.recentPlayers} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis
-                                        dataKey="name"
-                                        angle={-45}
-                                        textAnchor="end"
-                                        interval={0}
-                                        height={100}
-                                        stroke="#94a3b8"
-                                        fontSize={11}
-                                        fontWeight={700}
-                                        tickLine={false}
-                                        axisLine={false}
-                                    />
-                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Bar
-                                        dataKey="score"
-                                        name="คะแนน"
-                                        fill="#6366f1"
-                                        radius={[6, 6, 0, 0]}
-                                        label={{ position: 'top', fontSize: 10, fontWeight: 'bold', fill: '#6366f1' }}
+                        {/* Per-player delta chart */}
+                        {d.playerRows.length > 0 && (
+                            <div className="card">
+                                <ChartTitle title="การเปลี่ยนแปลงรายบุคคล (Delta)" sub="Δ stress / Δ happiness / Δ energy per session" />
+                                <ResponsiveContainer width="100%" height={320}>
+                                    <BarChart
+                                        data={d.playerRows.map((r, i) => ({
+                                            name: `#${i + 1}`,
+                                            dStress: r.d_stress,
+                                            dHappy: r.d_happy,
+                                            dEnergy: r.d_energy,
+                                        }))}
+                                        margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                        <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                        <YAxis domain={[-10, 10]} tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                        <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 4" />
+                                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                        <Legend wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
+                                        <Bar dataKey="dStress" name="Δ ความเครียด" fill={C.red} radius={[4, 4, 0, 0]} barSize={10} />
+                                        <Bar dataKey="dHappy" name="Δ ความสุข" fill={C.indigo} radius={[4, 4, 0, 0]} barSize={10} />
+                                        <Bar dataKey="dEnergy" name="Δ พลังงาน" fill={C.emerald} radius={[4, 4, 0, 0]} barSize={10} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ═════════════════════════════════════════════════════ TRENDS */}
+                {tab === 'trends' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                        <div className="card">
+                            <ChartTitle title="แนวโน้มรายวัน" sub="Daily sessions, avg score & avg happiness" />
+                            <ResponsiveContainer width="100%" height={340}>
+                                <AreaChart data={d.timelineData} margin={{ top: 16, right: 24, left: 0, bottom: 8 }}>
+                                    <defs>
+                                        <linearGradient id="gHappy" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor={C.indigo} stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor={C.indigo} stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="gScore" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor={C.emerald} stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor={C.emerald} stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                    <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                    <YAxis yAxisId="l" domain={[0, 10]} tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                    <YAxis yAxisId="r" orientation="right" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                    <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 14, color: '#f1f5f9' }} />
+                                    <Legend wrapperStyle={{ fontSize: 11, fontWeight: 700 }} />
+                                    <Area yAxisId="l" type="monotone" dataKey="happy" name="ความสุขเฉลี่ย (1-10)" stroke={C.indigo} strokeWidth={3} fill="url(#gHappy)" />
+                                    <Area yAxisId="r" type="monotone" dataKey="score" name="คะแนนเฉลี่ย" stroke={C.emerald} strokeWidth={3} fill="url(#gScore)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+
+                        <div className="card">
+                            <ChartTitle title="จำนวน Session รายวัน" sub="Daily session activity" />
+                            <ResponsiveContainer width="100%" height={220}>
+                                <BarChart data={d.timelineData} margin={{ top: 8, right: 16 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4e" />
+                                    <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                                    <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                    <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d4e', borderRadius: 12, color: '#f1f5f9' }} />
+                                    <Bar dataKey="sessions" name="Sessions" fill={C.purple} radius={[8, 8, 0, 0]}
+                                        label={{ position: 'top', fill: '#94a3b8', fontSize: 11, fontWeight: 700 }}
                                     />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
-                    </ChartContainer>
 
-                    {/* Recent 20 Players Detailed Emotional Comparison Chart */}
-                    <ChartContainer title="เปรียบเทียบสภาวะอารมณ์ 20 ผู้เล่นล่าสุด" subtitle="เปรียบเทียบ ความเครียด, ความสุข, และพลังงาน รายบุคคล" className="lg:col-span-12">
-                        <div className="h-[450px] w-full mt-6">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stats.recentEmotionalComparison} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis
-                                        dataKey="name"
-                                        angle={-45}
-                                        textAnchor="end"
-                                        interval={0}
-                                        height={120}
-                                        stroke="#94a3b8"
-                                        fontSize={10}
-                                        fontWeight={700}
-                                        tickLine={false}
-                                        axisLine={false}
-                                    />
-                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} domain={[0, 10]} />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Legend verticalAlign="top" align="right" wrapperStyle={{ paddingBottom: '20px' }} />
-                                    <Bar dataKey="stress" name="ความเครียด" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={12} />
-                                    <Bar dataKey="happiness" name="ความสุข" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={12} />
-                                    <Bar dataKey="energy" name="พลังงาน" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12} />
-                                </BarChart>
-                            </ResponsiveContainer>
+                        {/* Summary stats box */}
+                        <div className="card">
+                            <ChartTitle title="สรุปผลการวิจัย" sub="Research summary for academic reporting" />
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12, marginTop: 16 }}>
+                                {[
+                                    { label: 'จำนวนผู้เล่น (N)', value: data.stats.totalPlayers },
+                                    { label: 'Sessions ทั้งหมด', value: data.stats.totalSessions },
+                                    { label: 'Matched pairs (pre+post)', value: d.n },
+                                    { label: 'Δ avg ความเครียด', value: `${sign(d.avgDeltaStress)}${d.avgDeltaStress.toFixed(2)}`, color: d.avgDeltaStress <= 0 ? C.emerald : C.red },
+                                    { label: 'Δ avg ความสุข', value: `${sign(d.avgDeltaHappy)}${d.avgDeltaHappy.toFixed(2)}`, color: d.avgDeltaHappy >= 0 ? C.emerald : C.red },
+                                    { label: 'Δ avg พลังงาน', value: `${sign(d.avgDeltaEnergy)}${d.avgDeltaEnergy.toFixed(2)}`, color: d.avgDeltaEnergy >= 0 ? C.emerald : C.red },
+                                    { label: '% ลดความเครียด', value: d.n > 0 ? `${((d.reducedStress / d.n) * 100).toFixed(1)}%` : '—', color: C.emerald },
+                                    { label: '% เพิ่มความสุข', value: d.n > 0 ? `${((d.improvedHappy / d.n) * 100).toFixed(1)}%` : '—', color: C.emerald },
+                                    { label: '% เพิ่มพลังงาน', value: d.n > 0 ? `${((d.improvedEnergy / d.n) * 100).toFixed(1)}%` : '—', color: C.emerald },
+                                    { label: 'คะแนนเฉลี่ยรวม', value: data.stats.averageScore || 0 },
+                                    { label: 'Pre avg ความสุข', value: (+d.preAvg.happiness || 0).toFixed(2) },
+                                    { label: 'Post avg ความสุข', value: (+d.postAvg.happiness || 0).toFixed(2) },
+                                ].map((s, i) => (
+                                    <div key={i} style={{ background: '#16162a', border: '1px solid #2d2d4e', borderRadius: 14, padding: '14px 16px' }}>
+                                        <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>{s.label}</div>
+                                        <div style={{ fontSize: 24, fontWeight: 900, color: (s as any).color || '#f1f5f9' }}>{s.value}</div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </ChartContainer>
+                    </div>
+                )}
 
+                <div style={{ textAlign: 'center', color: '#1e293b', fontSize: 11, marginTop: 40 }}>
+                    Last refreshed: {lastRefresh.toLocaleTimeString('th-TH')} • Shoot Till Dawn Research Dashboard v3
                 </div>
             </main>
         </div>
     );
 }
 
-function StatCard({ label, value, subLabel, icon, trend, color }: any) {
-    const colors: any = {
-        indigo: 'bg-indigo-50 text-indigo-600',
-        purple: 'bg-purple-50 text-purple-600',
-        rose: 'bg-rose-50 text-rose-600',
-        emerald: 'bg-emerald-50 text-emerald-600',
-    };
-
+// ── Sub-components ─────────────────────────────────────────────────────────────
+function ChartTitle({ title, sub }: { title: string; sub: string }) {
     return (
-        <div className="bg-white p-7 rounded-[32px] border border-white shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-50/50 group overflow-hidden relative">
-            <div className={`p-4 rounded-2xl w-fit mb-4 transition-colors ${colors[color]} group-hover:scale-110 duration-300`}>
-                {icon}
-            </div>
-            <div>
-                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-                <div className="flex items-baseline justify-between">
-                    <h3 className="text-4xl font-black text-slate-900 tracking-tight">{value}</h3>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${color === 'rose' ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-500'}`}>
-                        {trend}
-                    </span>
-                </div>
-                <p className="text-[11px] font-bold text-slate-300 uppercase mt-2">{subLabel}</p>
-            </div>
-            {/* Background pattern */}
-            <div className="absolute top-[-10%] right-[-10%] w-24 h-24 bg-slate-50 rounded-full opacity-50 pointer-events-none group-hover:scale-150 transition-transform" />
+        <div style={{ marginBottom: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, letterSpacing: -0.5 }}>{title}</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2 }}>{sub}</p>
         </div>
     );
 }
 
-function ChartContainer({ title, subtitle, children, className = "" }: any) {
+function ResearchCard({
+    title, icon, color, avgDelta, improved, total, label, pre, post, lowerBetter
+}: {
+    title: string; icon: string; color: string;
+    avgDelta: number; improved: number; total: number; label: string;
+    pre: number; post: number; lowerBetter?: boolean;
+}) {
+    const isGood = lowerBetter ? avgDelta <= 0 : avgDelta >= 0;
+    const rate = total > 0 ? ((improved / total) * 100).toFixed(1) : '0.0';
+    const dp = pre > 0 ? deltaPct(post, pre) : 0;
+
     return (
-        <section className={`bg-white p-8 rounded-[40px] border border-white shadow-sm ${className}`}>
-            <div className="mb-6">
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">{title}</h2>
-                <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mt-1">{subtitle}</p>
+        <div className="card" style={{ border: `1px solid ${color}30`, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, right: 0, opacity: 0.05, fontSize: 80, lineHeight: 1 }}>{icon}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <span style={{ fontSize: 24 }}>{icon}</span>
+                <span style={{ fontWeight: 800, fontSize: 13 }}>{title}</span>
             </div>
-            {children}
-        </section>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                    <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2 }}>ค่าเฉลี่ย Δ</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: isGood ? C.emerald : C.red }}>
+                        {sign(avgDelta)}{avgDelta.toFixed(2)}
+                    </div>
+                </div>
+                <div>
+                    <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2 }}>% เปลี่ยนแปลง</div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: isGood ? C.emerald : C.red }}>
+                        {sign(dp)}{dp.toFixed(1)}%
+                    </div>
+                </div>
+                <div>
+                    <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2 }}>ก่อนเล่น</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#94a3b8' }}>{pre.toFixed(2)} <span style={{ fontSize: 11, color: '#475569' }}>({pct(pre)}%)</span></div>
+                </div>
+                <div>
+                    <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2 }}>หลังเล่น</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: isGood ? C.emerald : C.rose }}>{post.toFixed(2)} <span style={{ fontSize: 11, color: '#475569' }}>({pct(post)}%)</span></div>
+                </div>
+            </div>
+            <div style={{ marginTop: 14, padding: '10px 14px', background: isGood ? `${C.emerald}15` : `${C.red}15`, borderRadius: 12, border: `1px solid ${isGood ? C.emerald : C.red}30` }}>
+                <span style={{ fontWeight: 800, color: isGood ? C.emerald : C.red, fontSize: 13 }}>
+                    {improved}/{total} คน ({rate}%) {label}
+                </span>
+            </div>
+        </div>
     );
 }

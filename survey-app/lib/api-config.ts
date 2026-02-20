@@ -49,6 +49,37 @@ export interface GasStatsResponse {
     generatedAt: string;
 }
 
+export interface SurveyChange {
+    playerId: string;
+    sessionId: string;
+    pre: {
+        stress: number;
+        happiness: number;
+        energy: number;
+        motivation: number;
+        anxiety: number;
+    };
+    post: {
+        stress: number;
+        happiness: number;
+        fun: number;
+        satisfaction: number;
+        energy: number;
+        difficulty: number;
+    };
+    delta: {
+        stress: number;
+        happiness: number;
+        energy: number;
+    };
+}
+
+export interface GasSurveyChangesResponse {
+    success: boolean;
+    changes: SurveyChange[];
+    count: number;
+}
+
 export interface LeaderboardEntry {
     playerId: string;
     name: string;

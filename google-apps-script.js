@@ -112,6 +112,9 @@ function doGet(e) {
             case 'getStats':
                 return getStatistics();
 
+            case 'getSurveyChanges':
+                return getSurveyChanges();
+
             default:
                 return sendJsonResponse({
                     success: true,
@@ -506,6 +509,78 @@ function calculateSurveyComparison(sessionId) {
 
     } catch (error) {
         return null;
+    }
+}
+
+function getSurveyChanges() {
+    try {
+        const preSheet = getOrCreateSheet(SHEET_NAMES.PRE_SURVEY);
+        const postSheet = getOrCreateSheet(SHEET_NAMES.POST_SURVEY);
+
+        const preData = preSheet.getDataRange().getValues();
+        const postData = postSheet.getDataRange().getValues();
+
+        if (preData.length <= 1 || postData.length <= 1) {
+            return sendJsonResponse({
+                success: true,
+                changes: []
+            });
+        }
+
+        const preBySession = {};
+        for (let i = 1; i < preData.length; i++) {
+            const row = preData[i];
+            const sessionId = row[2];
+            if (!sessionId) continue;
+            preBySession[sessionId] = {
+                playerId: row[1],
+                sessionId: sessionId,
+                stress: Number(row[4]) || 0,
+                happiness: Number(row[5]) || 0,
+                energy: Number(row[6]) || 0,
+                motivation: Number(row[7]) || 0,
+                anxiety: Number(row[8]) || 0
+            };
+        }
+
+        const changes = [];
+        for (let i = 1; i < postData.length; i++) {
+            const row = postData[i];
+            const sessionId = row[2];
+            if (!sessionId || !preBySession[sessionId]) continue;
+
+            const pre = preBySession[sessionId];
+            const post = {
+                stress: Number(row[4]) || 0,
+                happiness: Number(row[5]) || 0,
+                fun: Number(row[6]) || 0,
+                satisfaction: Number(row[7]) || 0,
+                energy: Number(row[8]) || 0,
+                difficulty: Number(row[9]) || 0
+            };
+
+            const delta = {
+                stress: post.stress - pre.stress,
+                happiness: post.happiness - pre.happiness,
+                energy: post.energy - pre.energy
+            };
+
+            changes.push({
+                playerId: pre.playerId,
+                sessionId: sessionId,
+                pre: pre,
+                post: post,
+                delta: delta
+            });
+        }
+
+        return sendJsonResponse({
+            success: true,
+            changes: changes,
+            count: changes.length
+        });
+    } catch (error) {
+        return sendErrorResponse('Failed to calculate survey changes: ' + error.toString());
     }
 }
 
