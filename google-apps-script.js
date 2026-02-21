@@ -1095,3 +1095,254 @@ function submitScore(data) {
         return sendErrorResponse(error.toString());
     }
 }
+
+// ============================================
+// FAKE DATA GENERATOR (For Testing / Demo)
+// ============================================
+
+/** สุ่มทศนิยมระหว่าง min-max */
+function randFloat(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+/** สุ่มจำนวนเต็มระหว่าง min-max (inclusive) */
+function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/** Clamp ค่าให้อยู่ใน 1-10 และปัดเป็นจำนวนเต็ม */
+function clamp110(v) {
+    return Math.min(10, Math.max(1, Math.round(v)));
+}
+
+/** สุ่มชื่อภาษาไทย */
+function randomThaiName() {
+    var first = ['สมชาย', 'สมหญิง', 'วิชัย', 'นภาพร', 'ประเสริฐ', 'มาลี', 'ธนกร', 'ปิยะ', 'อรุณี', 'กิตติ',
+        'ชนิดา', 'วรรณา', 'ศิริ', 'ภานุ', 'นิรันดร์', 'ศุภชัย', 'พิมพ์ใจ', 'ทวีศักดิ์', 'สุดา', 'เจษฎา'];
+    var last = ['ใจดี', 'มีสุข', 'ดีงาม', 'สว่างจิต', 'รุ่งเรือง', 'มั่นคง', 'สุขสม', 'เจริญสุข',
+        'วิเศษสุข', 'ทองดี', 'นิลสุวรรณ', 'พรมมา', 'ศรีสุข', 'บุญมา', 'ยิ้มแย้ม'];
+    return first[randInt(0, first.length - 1)] + ' ' + last[randInt(0, last.length - 1)];
+}
+
+/** สุ่มอายุ (weighted ไปที่ 18-25) */
+function randomAge() {
+    var r = Math.random();
+    if (r < 0.10) return randInt(15, 17);
+    if (r < 0.60) return randInt(18, 25);
+    if (r < 0.85) return randInt(26, 35);
+    return randInt(36, 50);
+}
+
+/** สุ่มเพศ */
+function randomGender() {
+    var g = ['ชาย', 'หญิง', 'ชาย', 'หญิง', 'ไม่ระบุ'];
+    return g[randInt(0, g.length - 1)];
+}
+
+/** สุ่มระดับประสบการณ์เกม */
+function randomExperience() {
+    var e = ['เริ่มต้น', 'เริ่มต้น', 'ปานกลาง', 'ปานกลาง', 'เชี่ยวชาญ', 'ไม่เคยเล่น'];
+    return e[randInt(0, e.length - 1)];
+}
+
+/**
+ * สร้างค่า Pre-Survey
+ * stress ค่อนข้างสูงก่อนเล่น, happiness/energy ปานกลาง
+ */
+function generatePreValues() {
+    return {
+        stress: clamp110(randFloat(4.0, 8.5)),
+        happiness: clamp110(randFloat(3.0, 7.0)),
+        energy: clamp110(randFloat(3.5, 7.5)),
+        motivation: clamp110(randFloat(4.0, 9.0)),
+        anxiety: clamp110(randFloat(3.5, 8.0)),
+        expectation: clamp110(randFloat(5.0, 9.0))
+    };
+}
+
+/**
+ * สร้างค่า Post-Survey ที่ net-positive แต่มีความสุ่ม
+ * - 80% chance ที่แต่ละ metric จะดีขึ้น
+ * - 20% chance อาจคงที่หรือแย่ลงเล็กน้อย
+ */
+function generatePostValues(pre) {
+    function improveVal(val, minD, maxD, lowerIsBetter) {
+        var isGood = Math.random() < 0.80;
+        var d = isGood ? randFloat(minD, maxD) + randFloat(-0.5, 0.5)
+            : -randFloat(0, 1.5) + randFloat(-0.3, 0.3);
+        return lowerIsBetter ? clamp110(val - Math.abs(d))  // stress ลดลง
+            : clamp110(val + d);            // happiness/energy เพิ่มขึ้น
+    }
+    return {
+        stress: improveVal(pre.stress, 1.0, 3.5, true),
+        happiness: improveVal(pre.happiness, 0.5, 3.5, false),
+        energy: improveVal(pre.energy, 0.5, 2.5, false),
+        fun: clamp110(randFloat(5.5, 9.5)),
+        satisfaction: clamp110(randFloat(5.0, 9.0)),
+        difficulty: clamp110(randFloat(3.5, 8.5)),
+        overallRating: clamp110(randFloat(6.0, 9.5)),
+        willPlayAgain: Math.random() < 0.75 ? 'ใช่' : 'ไม่แน่ใจ'
+    };
+}
+
+/**
+ * สร้างคะแนนเกม 500-2000
+ * ผู้เล่นที่ mood ดีจะได้ bonus เล็กน้อย (realistic)
+ */
+function generateScore(post) {
+    var base = randInt(500, 2000);
+    var moodBonus = Math.round((post.happiness - post.stress) * randFloat(0, 25));
+    return Math.min(2000, Math.max(500, base + moodBonus));
+}
+
+/**
+ * ============================================
+ * seedFakeData(count)
+ * ============================================
+ * สร้างข้อมูลผู้เล่นปลอมสำหรับ Test/Demo
+ *
+ * ข้อมูลที่สร้าง:
+ *   - Player record (ชื่อ/อายุ/เพศ/ประสบการณ์)
+ *   - Pre-game survey (stress/happiness/energy ก่อนเล่น)
+ *   - Game session (score 500-2000, duration, level)
+ *   - Post-game survey (ค่าที่ net-positive แต่ random)
+ *
+ * ทุก record ใช้ sessionId เดียวกัน → dashboard จะ match ได้
+ *
+ * วิธีใช้: รัน runSeedFakeData() จาก Apps Script Editor
+ *
+ * @param {number} count จำนวนผู้เล่น (default 15)
+ */
+function seedFakeData(count) {
+    count = count || 15;
+    Logger.log('=== Seeding ' + count + ' fake players ===');
+
+    var playerSheet = getOrCreateSheet(SHEET_NAMES.PLAYERS, [
+        'PlayerId', 'Name', 'Age', 'Gender', 'Email', 'Phone', 'Education', 'GameExperience', 'RegisteredAt', 'LastActive'
+    ]);
+    var preSheet = getOrCreateSheet(SHEET_NAMES.PRE_SURVEY, [
+        'SurveyId', 'PlayerId', 'SessionId', 'Timestamp',
+        'StressLevel', 'HappinessLevel', 'EnergyLevel', 'MotivationLevel', 'AnxietyLevel', 'MoodDescription', 'ExpectationScore', 'Comments'
+    ]);
+    var postSheet = getOrCreateSheet(SHEET_NAMES.POST_SURVEY, [
+        'SurveyId', 'PlayerId', 'SessionId', 'Timestamp',
+        'StressLevel', 'HappinessLevel', 'FunLevel', 'SatisfactionLevel', 'EnergyLevel', 'DifficultyRating',
+        'WillPlayAgain', 'FavoriteAspect', 'ImprovementSuggestions', 'OverallRating', 'Comments'
+    ]);
+    var sessionSheet = getOrCreateSheet(SHEET_NAMES.SESSIONS, [
+        'SessionId', 'PlayerId', 'StartTime', 'EndTime', 'Duration', 'GameLevel', 'Score', 'Completed', 'Notes'
+    ]);
+
+    var favorites = ['ระบบยิง', 'สภาพแวดล้อม', 'ดนตรี', 'ความท้าทาย', 'กราฟิก', 'ระบบ Score', 'ความเร็วของเกม'];
+    var moods = ['สดชื่น', 'พร้อมลงสนาม', 'ตื่นเต้นเล็กน้อย', 'ปกติ', 'เหนื่อยแต่อยากเล่น', 'กังวลนิดหน่อย'];
+    var postComments = [
+        'สนุกมากครับ อยากเล่นอีก', 'เกมท้าทายดี ชอบระบบยิง', 'ครั้งแรกที่เล่น ถือว่าโอเคมาก',
+        'อยากให้มีด่านเพิ่ม', 'เสียงเพลงดีมาก บรรยากาศดี', 'ยากไปหน่อยแต่ก็สนุก',
+        'เกมดีมาก กราฟิกสวย', 'ชอบมากเลย เล่นได้นานมาก', '', '', ''
+    ];
+
+    var created = 0;
+    for (var i = 0; i < count; i++) {
+        try {
+            var playerId = 'P' + Utilities.getUuid().substring(0, 8).toUpperCase();
+            var sessionId = 'S' + Utilities.getUuid().substring(0, 8).toUpperCase();
+
+            // กระจาย timestamp ย้อนหลัง 0-14 วัน
+            var daysBack = randInt(0, 14);
+            var hoursBack = randInt(0, 23);
+            var now = new Date();
+            var regTime = new Date(now.getTime() - daysBack * 86400000 - hoursBack * 3600000);
+            var preTime = new Date(regTime.getTime() + randInt(5, 30) * 60000);
+            var sessionStart = new Date(preTime.getTime() + randInt(2, 10) * 60000);
+            var gameDuration = randInt(10, 45) * 60000;
+            var sessionEnd = new Date(sessionStart.getTime() + gameDuration);
+            var postTime = new Date(sessionEnd.getTime() + randInt(1, 5) * 60000);
+
+            var name = randomThaiName();
+            var age = randomAge();
+            var exp = randomExperience();
+
+            // 1. Player
+            playerSheet.appendRow([
+                playerId, name, age, randomGender(),
+                '', '', '', exp, regTime, regTime
+            ]);
+
+            // 2. Pre-Survey
+            var pre = generatePreValues();
+            preSheet.appendRow([
+                'PRE-' + Utilities.getUuid().substring(0, 8),
+                playerId, sessionId, preTime,
+                pre.stress, pre.happiness, pre.energy,
+                pre.motivation, pre.anxiety,
+                moods[randInt(0, moods.length - 1)],
+                pre.expectation, ''
+            ]);
+
+            // 3. Game Session
+            var post = generatePostValues(pre);
+            var score = generateScore(post);
+            sessionSheet.appendRow([
+                sessionId, playerId,
+                sessionStart, sessionEnd,
+                Math.round(gameDuration / 60000) + ' min',
+                randInt(1, 5).toString(),
+                score, true, 'Fake data seed'
+            ]);
+
+            // 4. Post-Survey
+            postSheet.appendRow([
+                'POST-' + Utilities.getUuid().substring(0, 8),
+                playerId, sessionId, postTime,
+                post.stress, post.happiness, post.fun,
+                post.satisfaction, post.energy, post.difficulty,
+                post.willPlayAgain,
+                favorites[randInt(0, favorites.length - 1)],
+                '', post.overallRating,
+                postComments[randInt(0, postComments.length - 1)]
+            ]);
+
+            created++;
+            Logger.log('[' + (i + 1) + '/' + count + '] ' + name +
+                ' | stress: ' + pre.stress + '→' + post.stress +
+                ' | happy: ' + pre.happiness + '→' + post.happiness +
+                ' | score: ' + score);
+
+            Utilities.sleep(80); // หลีกเลี่ยง quota limit
+
+        } catch (err) {
+            Logger.log('Error at index ' + i + ': ' + err.toString());
+        }
+    }
+
+    var msg = '=== Done: ' + created + '/' + count + ' players seeded ===';
+    Logger.log(msg);
+    return msg;
+}
+
+/**
+ * รัน seedFakeData จาก Apps Script Editor โดยตรง
+ * เปลี่ยนตัวเลขใน seedFakeData(N) เพื่อปรับจำนวนผู้เล่น
+ */
+function runSeedFakeData() {
+    return seedFakeData(15);
+}
+
+/**
+ * ลบข้อมูลทั้งหมดออก (ยกเว้น header row)
+ * DANGER: ใช้เฉพาะตอน reset ข้อมูล test เท่านั้น
+ */
+function clearAllData() {
+    var sheets = [SHEET_NAMES.PLAYERS, SHEET_NAMES.PRE_SURVEY, SHEET_NAMES.POST_SURVEY, SHEET_NAMES.SESSIONS];
+    var cleared = 0;
+    for (var s = 0; s < sheets.length; s++) {
+        var sheet = getOrCreateSheet(sheets[s]);
+        var lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+            sheet.deleteRows(2, lastRow - 1);
+            cleared++;
+            Logger.log('Cleared: ' + sheets[s]);
+        }
+    }
+    return 'Cleared ' + cleared + ' sheets';
+}
