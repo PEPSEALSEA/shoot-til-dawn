@@ -27,8 +27,8 @@ function LeaderboardContent() {
     }, []);
 
     const filteredEntries = entries.filter((e: LeaderboardEntry) =>
-        e.name.toLowerCase().includes(search.toLowerCase()) ||
-        e.playerId.toLowerCase().includes(search.toLowerCase())
+        String(e.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        String(e.playerId || '').toLowerCase().includes(search.toLowerCase())
     );
 
     return (

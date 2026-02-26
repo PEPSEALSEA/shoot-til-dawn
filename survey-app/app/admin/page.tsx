@@ -55,7 +55,12 @@ export default function AdminDashboard() {
             const statsJson: GasStatsResponse = await statsRes.json();
             const changesJson: GasSurveyChangesResponse = await changesRes.json();
             if (!statsJson.success) throw new Error('Stats API failed');
-            setData({ stats: statsJson.statistics, changes: changesJson.changes || [] });
+            if (!changesJson.success) console.warn('Survey Changes API returned success:false');
+
+            setData({
+                stats: statsJson.statistics,
+                changes: changesJson.changes || []
+            });
             setLastRefresh(new Date());
         } catch (e: any) {
             setError(e.message || 'Connection failed');
@@ -572,8 +577,8 @@ export default function AdminDashboard() {
                                                 return (
                                                     <tr key={i}>
                                                         <td style={{ color: '#475569' }}>{i + 1}</td>
-                                                        <td style={{ fontFamily: 'monospace', fontSize: 11, color: '#a5b4fc' }}>{r.pid.slice(0, 8)}</td>
-                                                        <td style={{ fontFamily: 'monospace', fontSize: 10, color: '#475569' }}>{r.id.slice(0, 10)}</td>
+                                                        <td style={{ fontFamily: 'monospace', fontSize: 11, color: '#a5b4fc' }}>{String(r.pid || '').slice(0, 8)}</td>
+                                                        <td style={{ fontFamily: 'monospace', fontSize: 10, color: '#475569' }}>{String(r.id || '').slice(0, 10)}</td>
                                                         <td>{r.pre_stress}</td>
                                                         <td>{r.post_stress}</td>
                                                         <td style={{ color: r.d_stress <= 0 ? C.emerald : C.red, fontWeight: 800 }}>{sign(r.d_stress)}{r.d_stress}</td>
